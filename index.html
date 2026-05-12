@@ -152,7 +152,9 @@ const TRANSLATIONS = {
   en: {
     appName: 'Orbit Explorer v2',
     language: 'Language',
-    singleStartValue: 'Single start value',
+    singleStartValue: 'Type a value, press Enter',
+    nEven: '(n even)',
+    nOdd: '(n odd)',
     add: 'Show steps',
     reset: 'Reset',
     cases: 'Cases',
@@ -238,7 +240,9 @@ const TRANSLATIONS = {
   es: {
     appName: 'Orbit Explorer',
     language: 'Idioma',
-    singleStartValue: 'Valor inicial',
+    singleStartValue: 'Escribe un valor, pulsa Enter',
+    nEven: '(n par)',
+    nOdd: '(n impar)',
     add: 'Mostrar pasos',
     reset: 'Reiniciar',
     cases: 'Casos',
@@ -324,7 +328,9 @@ const TRANSLATIONS = {
   'zh-Hans': {
     appName: 'Orbit Explorer',
     language: '语言',
-    singleStartValue: '输入起始值',
+    singleStartValue: '输入一个值，按 Enter 键',
+    nEven: '(偶数)',
+    nOdd: '(奇数)',
     add: '显示步骤',
     reset: '重置',
     cases: '案例',
@@ -795,7 +801,7 @@ function applyCycleLayout(nodes, edges, cycleNodes, W, H) {
 }
 
 // ── Canvas rendering ─────────────────────────────────────────────────────────
-function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid, view = { scale: 1, x: 0, y: 0 }) {
+function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid, view = { scale: 1, x: 0, y: 0 }, language = 'en') {
   if (!canvas) return;
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext('2d');
@@ -826,6 +832,8 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
     { text: ' ', color: theme.canvasWatermark },
     { text: String(Math.abs(a)), color: PARAM_COLORS.a },
   ];
+  const evenLabel = translate(language, 'nEven');
+  const oddLabel  = translate(language, 'nOdd');
   ctx.save();
   ctx.globalAlpha = 0.48;
   ctx.textAlign = 'left';
@@ -836,8 +844,8 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
   while (formulaSize > 24) {
     ctx.font = `bold ${formulaSize}px monospace`;
     annotationGap = Math.max(24, Math.round(formulaSize * 0.72));
-    const evenWidth = getSegmentsWidth(ctx, evenEquation) + annotationGap + measureSegmentWidth(ctx, '(n even)');
-    const oddWidth = getSegmentsWidth(ctx, oddEquation) + annotationGap + measureSegmentWidth(ctx, '(n odd)');
+    const evenWidth = getSegmentsWidth(ctx, evenEquation) + annotationGap + measureSegmentWidth(ctx, evenLabel);
+    const oddWidth = getSegmentsWidth(ctx, oddEquation) + annotationGap + measureSegmentWidth(ctx, oddLabel);
     if (Math.max(evenWidth, oddWidth) <= maxFormulaWidth) break;
     formulaSize -= 2;
   }
@@ -845,8 +853,8 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
   ctx.font = `bold ${formulaSize}px monospace`;
   const formulaGap = Math.max(formulaSize + 24, Math.round(formulaSize * 1.9));
   const annotationColor = theme.canvasAnnotation;
-  drawFormulaLine(ctx, W / 2, H - formulaBottomPad - formulaGap, evenEquation, '(n even)', annotationColor, annotationGap);
-  drawFormulaLine(ctx, W / 2, H - formulaBottomPad, oddEquation, '(n odd)', annotationColor, annotationGap);
+  drawFormulaLine(ctx, W / 2, H - formulaBottomPad - formulaGap, evenEquation, evenLabel, annotationColor, annotationGap);
+  drawFormulaLine(ctx, W / 2, H - formulaBottomPad, oddEquation, oddLabel, annotationColor, annotationGap);
   ctx.restore();
 
   // ── Zoom/pan transform — everything below (edges, nodes, cycle layout) is in
@@ -1093,6 +1101,7 @@ function App() {
   const themeRef = useRef(THEME_PRESETS.dark);
   const showGridRef = useRef(true);
   const showCycleLayoutRef = useRef(false);
+  const langRef = useRef('en'); // kept in sync with `language` so the canvas watermark can translate
   const rafRef    = useRef(null);
   const hoveredNodeRef = useRef(null);
 
@@ -1463,6 +1472,7 @@ function App() {
 
 
   useEffect(() => { paramsRef.current = { m, a, d }; }, [m, a, d]);
+  useEffect(() => { langRef.current = language; }, [language]);
   useEffect(() => { themeRef.current = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark; }, [useLightTheme]);
   useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
   // Toggling Show Cycles repositions every node (cycle layout ↔ force layout):
@@ -1530,7 +1540,7 @@ function App() {
         drawGraph(cvs, nodesRef.current, edgesRef.current,
             cyclesRef.current, startNodesRef.current, Date.now(),
             paramsRef.current.m, paramsRef.current.a, paramsRef.current.d,
-                  hoveredNodeRef.current, themeRef.current, showGridRef.current, viewRef.current);
+                  hoveredNodeRef.current, themeRef.current, showGridRef.current, viewRef.current, langRef.current);
       }
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -1921,9 +1931,9 @@ function App() {
   function addNumber() {
     const parsed = parseSingleStartInput(inputVal);
     if (parsed.kind === 'empty') {
-      // Revision 4: a blank seed + Enter (or Show steps) clears the canvas entirely.
+      // Blank seed + Enter = a full reset (clears the canvas, the grid highlights, and the zoom/pan).
       maybeNudgeSave();
-      clearGraph();
+      reset();
       setInputWarning('');
       return;
     }
@@ -1982,18 +1992,9 @@ function App() {
           ))}
         </div>
 
-        {/* Rule readout */}
-        <span style={{ color: uiTheme.textSecondary, fontSize: 15, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-          <span style={{ color: uiTheme.textPrimary }}>f(n) = n/</span>
-          <span style={{ color: PARAM_COLORS.d }}>{d}</span>
-          <span style={{ color: uiTheme.textPrimary }}> (even)   |   </span>
-          <span style={{ color: PARAM_COLORS.m }}>{m}</span>
-          <span style={{ color: uiTheme.textPrimary }}>n {sign} </span>
-          <span style={{ color: PARAM_COLORS.a }}>{Math.abs(a)}</span>
-          <span style={{ color: uiTheme.textPrimary }}> (odd)</span>
-        </span>
-
-        {/* Seed input, Show steps, max steps, and case actions */}
+        {/* Seed input, max steps, and case actions
+            (no "Show steps" / "Reset" buttons — Enter on a value shows it; Enter on an empty box resets;
+             the f(n) definitions live on the canvas watermark, not here) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
@@ -2002,14 +2003,10 @@ function App() {
               onChange={handleInputChange}
               onKeyDown={e => e.key === 'Enter' && addNumber()}
               style={{
-                width: 168, background: '#1a2d50', border: '1px solid #3355aa',
+                width: 220, background: '#1a2d50', border: '1px solid #3355aa',
                 color: 'white', padding: '7px 11px', borderRadius: 5, fontSize: 15,
               }}
             />
-            <button onClick={addNumber} style={{
-              background: '#1e44aa', border: 'none', color: 'white',
-              padding: '7px 16px', borderRadius: 5, fontSize: 15, fontWeight: 'bold',
-            }}>{t('add')}</button>
             <label
               title={t('stepsHelp')}
               style={{ display: 'flex', alignItems: 'center', gap: 6, color: uiTheme.textSecondary, fontSize: 13, whiteSpace: 'nowrap', cursor: 'help' }}>
@@ -2027,10 +2024,6 @@ function App() {
                 }}
               />
             </label>
-            <button onClick={reset} style={{
-              background: '#3d1020', border: 'none', color: '#ffaaaa',
-              padding: '7px 14px', borderRadius: 5, fontSize: 14,
-            }}>{t('reset')}</button>
             <button onClick={() => setShowDataTable(!showDataTable)} style={{
               background: showDataTable ? '#2a4455' : '#1a2d50', border: '1px solid #3355aa',
               color: 'white', padding: '7px 13px', borderRadius: 5, fontSize: 14,
