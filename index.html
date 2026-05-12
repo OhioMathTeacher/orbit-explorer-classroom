@@ -769,7 +769,7 @@ function applyCycleLayout(nodes, edges, cycleNodes, W, H) {
     const bottomY = startY + (cycleGroups.length * groupGap) + 60;
     const cols = Math.ceil(Math.sqrt(nonCycleNodes.length));
     const spacing = Math.min(80, (W - 100) / cols);
-    
+
     nonCycleNodes.forEach((val, idx) => {
       if (!nodes.has(val)) return;
       const node = nodes.get(val);
@@ -780,6 +780,17 @@ function applyCycleLayout(nodes, edges, cycleNodes, W, H) {
       node.vx = 0;
       node.vy = 0;
     });
+  }
+
+  // Vertically center the whole arrangement in the canvas (it's laid out top-anchored above).
+  let minY = Infinity, maxY = -Infinity;
+  for (const node of nodes.values()) {
+    if (node.y < minY) minY = node.y;
+    if (node.y > maxY) maxY = node.y;
+  }
+  if (Number.isFinite(minY)) {
+    const dy = H / 2 - (minY + maxY) / 2;
+    for (const node of nodes.values()) node.y += dy;
   }
 }
 
@@ -1077,6 +1088,7 @@ function App() {
   const dragStateRef = useRef(null);
   const panRef = useRef(null);          // active background-pan gesture (Revision 6)
   const viewRef = useRef({ scale: 1, x: 0, y: 0 }); // canvas zoom/pan transform — source of truth, read by the draw loop
+  const fitTimerRef = useRef(null);     // pending debounced auto-fit timer
   const paramsRef = useRef({ m, a, d });
   const themeRef = useRef(THEME_PRESETS.dark);
   const showGridRef = useRef(true);
@@ -1453,11 +1465,13 @@ function App() {
   useEffect(() => { paramsRef.current = { m, a, d }; }, [m, a, d]);
   useEffect(() => { themeRef.current = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark; }, [useLightTheme]);
   useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
-  // Toggling Show Cycles repositions every node (cycle layout ↔ force layout),
-  // so reset the zoom/pan view too — otherwise the rearranged graph can land off-screen.
+  // Toggling Show Cycles repositions every node (cycle layout ↔ force layout):
+  // snap the view back to 100% (so the rearranged graph isn't stranded off-screen),
+  // then auto-fit once the new layout settles.
   useEffect(() => {
     showCycleLayoutRef.current = showCycleLayout;
     resetView();
+    scheduleAutoFit();
   }, [showCycleLayout]);
 
   // Rebuild graph when maxVisibleSteps changes
@@ -1469,15 +1483,9 @@ function App() {
 
   // Load one example trajectory on mount (the `seed` URL param, default 27).
   // Single example because a new seed now replaces the canvas (Revision 4) — no overlay.
-  // After the force layout settles, fit it to the canvas — the first example reads much better zoomed in.
+  // addNumberVal schedules its own auto-fit once the layout settles.
   useEffect(() => {
-    const tid = setTimeout(() => {
-      addNumberVal(seed);
-      setTimeout(() => {
-        const v = viewRef.current;
-        if (v.scale === 1 && v.x === 0 && v.y === 0) fitToCanvas();
-      }, 1600);
-    }, 300);
+    const tid = setTimeout(() => addNumberVal(seed), 300);
     return () => clearTimeout(tid);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1712,7 +1720,12 @@ function App() {
     return { x: (p.x - v.x) / v.scale, y: (p.y - v.y) / v.scale };
   }
 
+  function cancelAutoFit() {
+    if (fitTimerRef.current) { clearTimeout(fitTimerRef.current); fitTimerRef.current = null; }
+  }
+
   function resetView() {
+    cancelAutoFit();
     viewRef.current = { scale: 1, x: 0, y: 0 };
     setZoomPct(100);
   }
@@ -1745,6 +1758,7 @@ function App() {
 
   // Zoom keeping the given screen point fixed (used by wheel — anchored on the graph center).
   function zoomAround(screenX, screenY, factor) {
+    cancelAutoFit();
     const v = viewRef.current;
     const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.scale * factor));
     const wx = (screenX - v.x) / v.scale;
@@ -1760,6 +1774,7 @@ function App() {
   }
 
   function fitToCanvas() {
+    cancelAutoFit();
     const cvs = canvasRef.current;
     if (!cvs) return;
     const W = cvs.width || 900, H = cvs.height || 560;
@@ -1773,9 +1788,22 @@ function App() {
     setZoomPct(Math.round(scale * 100));
   }
 
+  // After a layout change (new seed / Show Cycles toggle / startup), wait for the
+  // layout to settle, then auto-fit — unless the user has zoomed/panned in the meantime.
+  // Debounced: rapid changes only fit once, for the last one.
+  function scheduleAutoFit(delay = 1400) {
+    if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+    fitTimerRef.current = setTimeout(() => {
+      fitTimerRef.current = null;
+      const v = viewRef.current;
+      if (v.scale === 1 && v.x === 0 && v.y === 0) fitToCanvas();
+    }, delay);
+  }
+
   function handleCanvasPointerDown(event) {
     const point = getCanvasPoint(event);
     if (!point) return;
+    cancelAutoFit(); // touching the canvas (drag/pan) means the user is steering the view now
     const w = screenToWorld(point);
     const hit = findNodeAt(nodesRef.current, startNodesRef.current, w.x, w.y, Date.now());
     if (hit) {
@@ -1886,6 +1914,8 @@ function App() {
       }
       return next;
     });
+    // Once the force layout settles, fit the new trajectory to the canvas.
+    scheduleAutoFit();
   }
 
   function addNumber() {
