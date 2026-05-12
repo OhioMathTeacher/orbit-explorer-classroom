@@ -224,6 +224,8 @@ const TRANSLATIONS = {
     dataReferenceGrids: 'DATA REFERENCE GRIDS',
     gridWindow: 'GRID WINDOW',
     startAt: 'Start at',
+    findLabel: 'Find',
+    findHelp: 'Type a value and press Enter — the grid jumps to its block of 100 and rings that cell.',
     blocks: 'Blocks',
     usePreviousNext: 'Use Previous/Next to move the visible window.',
     previous: 'Previous',
@@ -336,6 +338,8 @@ const TRANSLATIONS = {
     dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
     gridWindow: 'VENTANA DE CUADRICULA',
     startAt: 'Empezar en',
+    findLabel: 'Buscar',
+    findHelp: 'Escribe un valor y pulsa Enter — la cuadrícula salta a su bloque de 100 y resalta esa casilla.',
     blocks: 'Bloques',
     usePreviousNext: 'Usa Anterior/Siguiente para mover la ventana visible.',
     previous: 'Anterior',
@@ -448,6 +452,8 @@ const TRANSLATIONS = {
     dataReferenceGrids: '参考网格',
     gridWindow: '网格窗口',
     startAt: '起始于',
+    findLabel: '查找',
+    findHelp: '输入一个值并按 Enter——网格会跳到包含它的那个 100 区块，并圈出那个格子。',
     blocks: '区块数',
     usePreviousNext: '使用“上一页/下一页”移动当前可见窗口。',
     previous: '上一页',
@@ -1220,6 +1226,8 @@ function App() {
   const [savedCases, setSavedCases] = useState([]);
   const [gridStart, setGridStart] = useState(1);
   const [gridCount, setGridCount] = useState(4);
+  const [findVal, setFindVal] = useState('');          // Revision 7: data-grid "Find" input
+  const [highlightCell, setHighlightCell] = useState(null); // value to ring in the grid (null = none)
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [layoutMode, setLayoutMode] = useState('spread');
@@ -1785,6 +1793,16 @@ function App() {
 
   function updateGridStart(value) {
     setGridStart(alignGridStart(value));
+  }
+
+  // Revision 7: type a value into the grid "Find" box → jump to the block of 100 that
+  // contains it and ring that cell so it's easy to spot.
+  function jumpToBlock() {
+    const n = parseInt(String(findVal).replace(/[,_\s]/g, ''), 10);
+    setFindVal('');
+    if (!Number.isInteger(n) || n < 1 || n > MAX_VAL) return;
+    setGridStart(alignGridStart(n));
+    setHighlightCell(n);
   }
 
   function updateGridCount(value) {
@@ -2624,6 +2642,20 @@ function App() {
             <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, marginBottom: 8, letterSpacing: 1 }}>
               {t('gridWindow')}
             </div>
+            {/* Revision 7: jump to the block of 100 containing a typed value (and ring that cell) */}
+            <label title={t('findHelp')} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12, color: uiTheme.textSecondary, whiteSpace: 'nowrap' }}>
+              <span>{t('findLabel')}</span>
+              <input
+                type="text" inputMode="numeric" value={findVal}
+                onChange={e => setFindVal(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && jumpToBlock()}
+                placeholder="e.g. 1,234"
+                style={{
+                  flex: 1, minWidth: 0, background: uiTheme.surfaceBgMuted, border: `1px solid ${uiTheme.borderStrong}`,
+                  color: uiTheme.textPrimary, borderRadius: 4, padding: '6px 8px', fontSize: 12, fontFamily: 'monospace',
+                }}
+              />
+            </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 76px', gap: 6, marginBottom: 6 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ color: uiTheme.textSecondary, fontSize: 10 }}>{t('startAt')}</span>
@@ -2668,7 +2700,7 @@ function App() {
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 type="button"
-                onClick={() => updateGridStart(Math.max(1, gridStart - gridCount * GRID_BLOCK_SIZE))}
+                onClick={() => { updateGridStart(Math.max(1, gridStart - gridCount * GRID_BLOCK_SIZE)); setHighlightCell(null); }}
                 style={{
                   flex: 1,
                   background: uiTheme.surfaceBg,
@@ -2682,7 +2714,7 @@ function App() {
               </button>
               <button
                 type="button"
-                onClick={() => updateGridStart(gridStart + gridCount * GRID_BLOCK_SIZE)}
+                onClick={() => { updateGridStart(gridStart + gridCount * GRID_BLOCK_SIZE); setHighlightCell(null); }}
                 style={{
                   flex: 1,
                   background: uiTheme.surfaceBg,
@@ -2757,14 +2789,18 @@ function App() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, minmax(0, 1fr))', gap: 3 }}>
                 {Array.from({ length: GRID_BLOCK_SIZE }, (_, i) => blockStart + i).map(n => {
                   const hit = visitedNums.has(n);
+                  const isFind = (n === highlightCell);
                   const label = formatValue(n);
                   const cellFont = Math.max(7, Math.min(14, Math.floor(58 / String(label).length)));
                   return (
                     <button key={n} type="button" style={{
                       aspectRatio: '1',
                       background: hit ? valColor(n) : '#182840',
-                      border: hit ? '1px solid rgba(255,255,255,0.2)' : '1px solid #1e3566',
+                      border: isFind ? '3px solid #ffd54f' : (hit ? '1px solid rgba(255,255,255,0.2)' : '1px solid #1e3566'),
                       borderRadius: 3,
+                      position: 'relative',
+                      zIndex: isFind ? 2 : 1,
+                      boxShadow: isFind ? '0 0 9px 2px rgba(255,213,79,0.65)' : 'none',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: cellFont, fontWeight: 'bold',
                       lineHeight: 1,
