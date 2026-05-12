@@ -2340,7 +2340,7 @@ function App() {
         <div style={{
           width: 440, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
           display: 'flex', flexDirection: 'column', flexShrink: 0, order: 1,
-          overflowY: 'auto', padding: '10px 12px',
+          overflowX: 'hidden', overflowY: 'auto', padding: '10px 12px',
         }}>
           <div style={{
             color: uiTheme.titleText, fontWeight: 'bold', fontSize: 16,
@@ -2486,9 +2486,14 @@ function App() {
               <div style={{ color: '#99bbdd', fontSize: 15, fontWeight: 'bold', textAlign: 'center', marginBottom: 6, letterSpacing: 1 }}>
                 {formatValue(blockStart)} - {formatValue(blockEnd)}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 3 }}>
+              {/* minmax(0,1fr) lets the 10 columns share the panel width even for big numbers,
+                  so the grid never spills off the panel; the cell font shrinks to fit the
+                  comma-formatted label (e.g. "11,111") within the resulting cell. */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, minmax(0, 1fr))', gap: 3 }}>
                 {Array.from({ length: GRID_BLOCK_SIZE }, (_, i) => blockStart + i).map(n => {
                   const hit = visitedNums.has(n);
+                  const label = formatValue(n);
+                  const cellFont = Math.max(7, Math.min(14, Math.floor(58 / String(label).length)));
                   return (
                     <button key={n} type="button" style={{
                       aspectRatio: '1',
@@ -2496,20 +2501,22 @@ function App() {
                       border: hit ? '1px solid rgba(255,255,255,0.2)' : '1px solid #1e3566',
                       borderRadius: 3,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 14, fontWeight: 'bold',
+                      fontSize: cellFont, fontWeight: 'bold',
+                      lineHeight: 1,
                       cursor: 'pointer',
                       padding: 0,
+                      overflow: 'hidden',
                       userSelect: 'none',
                       WebkitUserSelect: 'none',
                       color: 'white',
                     }}
-                    title={t('addValueTitle', { value: n })}
+                    title={t('addValueTitle', { value: label })}
                     onMouseDown={e => {
                       e.preventDefault();
                       setInputVal(String(n));
                       addNumberVal(n);
                     }}>
-                      {n}
+                      {label}
                     </button>
                   );
                 })}
