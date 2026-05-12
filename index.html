@@ -81,6 +81,8 @@ const MAX_NODES = 120;    // cap displayed nodes
 const NODE_R    = 15;     // base node radius px
 const START_R   = 22;     // radius for starting numbers (persistent anchor)
 const RELIABLE_START_LIMIT = Math.min(MAX_START, Number.MAX_SAFE_INTEGER);
+const MIN_ZOOM  = 0.2;    // canvas zoom limits (Revision 6)
+const MAX_ZOOM  = 8;
 const PARAM_COLORS = {
   m: '#63d471',
   a: '#ffb347',
@@ -782,7 +784,7 @@ function applyCycleLayout(nodes, edges, cycleNodes, W, H) {
 }
 
 // ── Canvas rendering ─────────────────────────────────────────────────────────
-function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid) {
+function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid, view = { scale: 1, x: 0, y: 0 }) {
   if (!canvas) return;
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext('2d');
@@ -835,6 +837,12 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
   drawFormulaLine(ctx, W / 2, H - formulaBottomPad - formulaGap, evenEquation, '(n even)', annotationColor, annotationGap);
   drawFormulaLine(ctx, W / 2, H - formulaBottomPad, oddEquation, '(n odd)', annotationColor, annotationGap);
   ctx.restore();
+
+  // ── Zoom/pan transform — everything below (edges, nodes, cycle layout) is in
+  //    world coordinates; the view transform maps world → screen (Revision 6). ──
+  ctx.save();
+  ctx.translate(view.x, view.y);
+  ctx.scale(view.scale, view.scale);
 
   // Detect bidirectional cycle edges
   const bidirectional = new Set();
@@ -1010,6 +1018,8 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
     ctx.textBaseline = 'middle';
     ctx.fillText(label, pos.x, pos.y);
   }
+
+  ctx.restore(); // end zoom/pan transform
 }
 
 // ── Outcome badge ────────────────────────────────────────────────────────────
@@ -1065,6 +1075,8 @@ function App() {
   const sequencesRef = useRef([]); // Store all explored sequences for step filtering
   const canvasRef = useRef(null);
   const dragStateRef = useRef(null);
+  const panRef = useRef(null);          // active background-pan gesture (Revision 6)
+  const viewRef = useRef({ scale: 1, x: 0, y: 0 }); // canvas zoom/pan transform — source of truth, read by the draw loop
   const paramsRef = useRef({ m, a, d });
   const themeRef = useRef(THEME_PRESETS.dark);
   const showGridRef = useRef(true);
@@ -1091,6 +1103,7 @@ function App() {
   const [useLightTheme, setUseLightTheme] = useState(false);
   const [maxVisibleSteps, setMaxVisibleSteps] = useState(50);
   const [language, setLanguage] = useState(() => localStorage.getItem('orbit_language') || 'en');
+  const [zoomPct, setZoomPct] = useState(100); // canvas zoom % shown in the corner control cluster
   const [chatPanelWidth, setChatPanelWidth] = useState(320);
   const [saveNudge, setSaveNudge] = useState(null); // {start, ...logEntry} when a new seed cleared an unsaved trajectory; null otherwise
   const saveNudgeTimerRef = useRef(null);
@@ -1469,6 +1482,20 @@ function App() {
     return () => window.removeEventListener('resize', resize);
   }, []);
 
+  // Wheel / pinch → zoom centered on the cursor (Revision 6).
+  // Attached manually because React's onWheel is passive (can't preventDefault).
+  useEffect(() => {
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = cvs.getBoundingClientRect();
+      zoomAround(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0016));
+    };
+    cvs.addEventListener('wheel', onWheel, { passive: false });
+    return () => cvs.removeEventListener('wheel', onWheel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Animation loop
   useEffect(() => {
     let alive = true;
@@ -1484,7 +1511,7 @@ function App() {
         drawGraph(cvs, nodesRef.current, edgesRef.current,
             cyclesRef.current, startNodesRef.current, Date.now(),
             paramsRef.current.m, paramsRef.current.a, paramsRef.current.d,
-                  hoveredNodeRef.current, themeRef.current, showGridRef.current);
+                  hoveredNodeRef.current, themeRef.current, showGridRef.current, viewRef.current);
       }
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -1568,6 +1595,9 @@ function App() {
     cyclesRef.current     = new Set();
     startNodesRef.current = new Set();
     sequencesRef.current  = [];
+    // Reset the zoom/pan view too, so a freshly drawn graph is fully visible.
+    viewRef.current       = { scale: 1, x: 0, y: 0 };
+    setZoomPct(100);
   }
 
   function reset() {
@@ -1663,55 +1693,122 @@ function App() {
     };
   }
 
+  // ── Zoom / pan (Revision 6) ──────────────────────────────────────────────────
+  // Node positions and edges live in "world" coordinates ([0..canvasW]×[0..canvasH]);
+  // viewRef.current = { scale, x, y } maps world → screen: screen = world*scale + (x,y).
+  function screenToWorld(p) {
+    const v = viewRef.current;
+    return { x: (p.x - v.x) / v.scale, y: (p.y - v.y) / v.scale };
+  }
+
+  function resetView() {
+    viewRef.current = { scale: 1, x: 0, y: 0 };
+    setZoomPct(100);
+  }
+
+  function zoomAround(screenX, screenY, factor) {
+    const v = viewRef.current;
+    const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.scale * factor));
+    const wx = (screenX - v.x) / v.scale;
+    const wy = (screenY - v.y) / v.scale;
+    viewRef.current = { scale: newScale, x: screenX - wx * newScale, y: screenY - wy * newScale };
+    setZoomPct(Math.round(newScale * 100));
+  }
+
+  function zoomButton(factor) {
+    const cvs = canvasRef.current;
+    zoomAround((cvs?.width ?? 900) / 2, (cvs?.height ?? 560) / 2, factor);
+  }
+
+  function fitToCanvas() {
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    const W = cvs.width || 900, H = cvs.height || 560;
+    const nodes = nodesRef.current;
+    if (!nodes || nodes.size === 0) { resetView(); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const pos of nodes.values()) {
+      const r = START_R + 8;
+      if (pos.x - r < minX) minX = pos.x - r;
+      if (pos.x + r > maxX) maxX = pos.x + r;
+      if (pos.y - r < minY) minY = pos.y - r;
+      if (pos.y + r > maxY) maxY = pos.y + r;
+    }
+    const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+    // ~8% margin; don't over-zoom a small graph (cap the fit zoom-in at 2.5×)
+    const scale = Math.max(MIN_ZOOM, Math.min(2.5, MAX_ZOOM, Math.min(W / bw, H / bh) * 0.92));
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    viewRef.current = { scale, x: W / 2 - cx * scale, y: H / 2 - cy * scale };
+    setZoomPct(Math.round(scale * 100));
+  }
+
   function handleCanvasPointerDown(event) {
     const point = getCanvasPoint(event);
     if (!point) return;
-    const hit = findNodeAt(nodesRef.current, startNodesRef.current, point.x, point.y, Date.now());
-    if (!hit) return;
-
-    const { value, position, radius } = hit;
-    position.dragging = true;
-    position.pinned = true;
-    position.vx = 0;
-    position.vy = 0;
-    dragStateRef.current = {
-      value,
-      pointerId: event.pointerId,
-      offsetX: point.x - position.x,
-      offsetY: point.y - position.y,
-      radius,
-    };
-    setIsDraggingNode(true);
+    const w = screenToWorld(point);
+    const hit = findNodeAt(nodesRef.current, startNodesRef.current, w.x, w.y, Date.now());
+    if (hit) {
+      const { value, position, radius } = hit;
+      position.dragging = true;
+      position.pinned = true;
+      position.vx = 0;
+      position.vy = 0;
+      dragStateRef.current = {
+        value,
+        pointerId: event.pointerId,
+        offsetX: w.x - position.x,
+        offsetY: w.y - position.y,
+        radius,
+      };
+      setIsDraggingNode(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+    // Nothing under the cursor → pan the view.
+    const v = viewRef.current;
+    panRef.current = { pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, vx: v.x, vy: v.y };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
   }
 
   function handleCanvasPointerMove(event) {
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const point = getCanvasPoint(event);
-    const canvas = canvasRef.current;
-    const position = nodesRef.current.get(drag.value);
-    if (!point || !canvas || !position) return;
-
-    position.x = clampNodePosition(point.x - drag.offsetX, NODE_R, canvas.width);
-    position.y = clampNodePosition(point.y - drag.offsetY, NODE_R, canvas.height);
-    position.vx = 0;
-    position.vy = 0;
+    if (drag && drag.pointerId === event.pointerId) {
+      const point = getCanvasPoint(event);
+      const canvas = canvasRef.current;
+      const position = nodesRef.current.get(drag.value);
+      if (!point || !canvas || !position) return;
+      const w = screenToWorld(point);
+      position.x = clampNodePosition(w.x - drag.offsetX, NODE_R, canvas.width);
+      position.y = clampNodePosition(w.y - drag.offsetY, NODE_R, canvas.height);
+      position.vx = 0;
+      position.vy = 0;
+      return;
+    }
+    const pan = panRef.current;
+    if (pan && pan.pointerId === event.pointerId) {
+      viewRef.current.x = pan.vx + (event.clientX - pan.sx);
+      viewRef.current.y = pan.vy + (event.clientY - pan.sy);
+    }
   }
 
   function releaseDraggedNode(pointerId) {
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== pointerId) return;
-    const position = nodesRef.current.get(drag.value);
-    if (position) {
-      position.dragging = false;
-      position.pinned = true;
-      position.vx = 0;
-      position.vy = 0;
+    if (drag && drag.pointerId === pointerId) {
+      const position = nodesRef.current.get(drag.value);
+      if (position) {
+        position.dragging = false;
+        position.pinned = true;
+        position.vx = 0;
+        position.vy = 0;
+      }
+      dragStateRef.current = null;
+      setIsDraggingNode(false);
     }
-    dragStateRef.current = null;
-    setIsDraggingNode(false);
+    if (panRef.current && panRef.current.pointerId === pointerId) {
+      panRef.current = null;
+    }
   }
 
   function handleCanvasPointerUp(event) {
@@ -1990,7 +2087,37 @@ function App() {
           onPointerMove={handleCanvasPointerMove}
           onPointerUp={handleCanvasPointerUp}
           onPointerCancel={handleCanvasPointerCancel}
+          onDoubleClick={fitToCanvas}
           style={{ flex: 1, display: 'block', minWidth: 0, cursor: isDraggingNode ? 'grabbing' : 'grab' }} />
+
+        {/* Zoom / pan controls (Revision 6) — bottom-left of the canvas */}
+        <div style={{
+          position: 'absolute', bottom: 12, left: 12, zIndex: 6,
+          display: 'flex', alignItems: 'center', gap: 4,
+          background: uiTheme.overlayBg, border: `1px solid ${uiTheme.borderStrong}`,
+          borderRadius: 8, padding: '4px 6px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          color: uiTheme.textPrimary, userSelect: 'none',
+        }}>
+          <button type="button" onClick={() => zoomButton(0.8)} title="Zoom out" aria-label="Zoom out" style={{
+            width: 26, height: 26, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 18, fontWeight: 'bold',
+            lineHeight: 1, padding: 0, cursor: 'pointer',
+          }}>−</button>
+          <span style={{ minWidth: 50, textAlign: 'center', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{zoomPct}%</span>
+          <button type="button" onClick={() => zoomButton(1.25)} title="Zoom in" aria-label="Zoom in" style={{
+            width: 26, height: 26, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 18, fontWeight: 'bold',
+            lineHeight: 1, padding: 0, cursor: 'pointer',
+          }}>+</button>
+          <button type="button" onClick={fitToCanvas} title="Fit the graph to the canvas (or double-click the canvas)" style={{
+            height: 26, padding: '0 9px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 12, fontWeight: 'bold', cursor: 'pointer',
+          }}>Fit</button>
+          <button type="button" onClick={resetView} title="Reset zoom & pan to 100%" style={{
+            height: 26, padding: '0 9px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 12, fontWeight: 'bold', cursor: 'pointer',
+          }}>Reset</button>
+        </div>
 
         {/* Soft "save first?" nudge — appears briefly when a new seed replaced an unsaved trajectory (Revision 4) */}
         {saveNudge && (
