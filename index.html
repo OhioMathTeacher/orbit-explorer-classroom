@@ -170,6 +170,19 @@ const TRANSLATIONS = {
     dragHelp: 'Drag any number ball to pin it in place. Reset Layout releases pinned nodes and lets the layout settle again.',
     showCycles: 'Show Cycles',
     cycleLayoutHelp: 'Automatically arrange cycle nodes in separate groups for easier analysis.',
+    layoutHeader: 'Layout',
+    layoutSpread: 'Spread out',
+    layoutSpreadHelp: 'The default springy graph — circles push apart, arrows pull connected ones together.',
+    layoutPolygon: 'Polygon',
+    layoutPolygonHelp: 'Arrange the cycle as a regular polygon, in the order the sequence visits its values.',
+    layoutStar: 'Star',
+    layoutStarHelp: 'Arrange the cycle as a star polygon {N/k} — connect every k-th value instead of the next one.',
+    layoutSorted: 'Sorted',
+    layoutSortedHelp: 'Arrange the cycle around a circle in size order: smallest at the top, increasing clockwise.',
+    layoutParity: 'Parity-split',
+    layoutParityHelp: 'Arrange the cycle with odd values along the top half of the circle and even values along the bottom.',
+    colorPrimesLabel: 'Color primes',
+    colorPrimesHelp: 'Gives prime numbers (2, 3, 5, 7, 11, …) their own color so they stand out from the rest.',
     view: 'View',
     stepNumbersLabel: 'Show step numbers',
     stepNumbersHelp: 'Labels each circle with its place in the sequence: 0 is your starting value, 1 is the next number, 2 is the one after that, and so on.',
@@ -268,6 +281,19 @@ const TRANSLATIONS = {
     dragHelp: 'Arrastra cualquier bola numerica para fijarla en su lugar. Restablecer diseno libera los nodos fijados y deja que el diseno se acomode otra vez.',
     showCycles: 'Mostrar ciclos',
     cycleLayoutHelp: 'Organiza automaticamente los nodos de ciclo en grupos separados para facilitar el analisis.',
+    layoutHeader: 'Diseño',
+    layoutSpread: 'Disperso',
+    layoutSpreadHelp: 'El grafo elástico por defecto — los círculos se separan, las flechas acercan los conectados.',
+    layoutPolygon: 'Polígono',
+    layoutPolygonHelp: 'Coloca el ciclo como un polígono regular, en el orden en que la secuencia visita sus valores.',
+    layoutStar: 'Estrella',
+    layoutStarHelp: 'Coloca el ciclo como un polígono estrellado {N/k} — conecta cada k-ésimo valor en vez del siguiente.',
+    layoutSorted: 'Ordenado',
+    layoutSortedHelp: 'Coloca el ciclo en círculo por tamaño: el más pequeño arriba, creciendo en sentido horario.',
+    layoutParity: 'Por paridad',
+    layoutParityHelp: 'Coloca el ciclo con los valores impares en la mitad superior del círculo y los pares en la inferior.',
+    colorPrimesLabel: 'Color para primos',
+    colorPrimesHelp: 'Da a los números primos (2, 3, 5, 7, 11, …) su propio color para que destaquen del resto.',
     view: 'Vista',
     stepNumbersLabel: 'Mostrar números de paso',
     stepNumbersHelp: 'Etiqueta cada círculo con su lugar en la secuencia: 0 es tu valor inicial, 1 es el siguiente número, 2 es el de después, y así sucesivamente.',
@@ -366,6 +392,19 @@ const TRANSLATIONS = {
     dragHelp: '拖动任意数字球即可将它固定在当前位置。重置布局会释放固定节点，并让布局重新整理。',
     showCycles: '显示循环',
     cycleLayoutHelp: '自动将循环节点排列成独立的组以便于分析。',
+    layoutHeader: '布局',
+    layoutSpread: '散开',
+    layoutSpreadHelp: '默认的弹性图——圆圈互相推开，箭头把相连的拉到一起。',
+    layoutPolygon: '多边形',
+    layoutPolygonHelp: '按序列访问各值的顺序，把循环排成一个正多边形。',
+    layoutStar: '星形',
+    layoutStarHelp: '把循环排成星形多边形 {N/k}——每隔 k 个值连一条线，而不是连下一个。',
+    layoutSorted: '排序',
+    layoutSortedHelp: '按大小把循环排在一个圆上：最小的在顶部，顺时针递增。',
+    layoutParity: '按奇偶分',
+    layoutParityHelp: '把循环排成：奇数值在圆的上半部分，偶数值在下半部分。',
+    colorPrimesLabel: '为质数着色',
+    colorPrimesHelp: '给质数（2、3、5、7、11……）一个专属颜色，让它们从其他数字中突显出来。',
     view: '视图',
     stepNumbersLabel: '显示步数编号',
     stepNumbersHelp: '为每个圆圈标注它在序列中的位置：0 是你的起始值，1 是下一个数字，2 是再下一个，依此类推。',
@@ -543,6 +582,21 @@ REMEMBER: You're a thinking partner, not an oracle. Your job is to help them thi
 
 function formatValue(value) {
   return Number.isFinite(value) ? value.toLocaleString() : String(value);
+}
+
+// Memoized primality test (trial division) — used by the "Color primes" View option.
+const _primeCache = new Map();
+function isPrime(n) {
+  if (!Number.isInteger(n) || n < 2) return false;
+  const cached = _primeCache.get(n);
+  if (cached !== undefined) return cached;
+  let result = true;
+  if (n % 2 === 0) result = (n === 2);
+  else {
+    for (let i = 3; i * i <= n; i += 2) { if (n % i === 0) { result = false; break; } }
+  }
+  _primeCache.set(n, result);
+  return result;
 }
 
 function measureSegmentWidth(ctx, text) {
@@ -741,7 +795,9 @@ function physicsStep(nodes, edges, W, H) {
 }
 
 // ── Cycle Layout ─────────────────────────────────────────────────────────────
-function applyCycleLayout(nodes, edges, cycleNodes, W, H) {
+function applyCycleLayout(nodes, edges, cycleNodes, W, H, mode = 'polygon') {
+  // mode ∈ {'polygon','star','sorted','parity'} — all currently render the same arrangement;
+  // the distinct Star {N/k} / Sorted / Parity-split placements land in Revision 5b-ii.
   // Detect separate cycle groups by traversing edges
   const cycleGroups = [];
   const visited = new Set();
@@ -835,8 +891,9 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
   if (!canvas) return;
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext('2d');
-  const { showStepNumbers = false, parityColoring = false, stepIndex = null } = opts;
+  const { showStepNumbers = false, parityColoring = false, colorPrimes = false, stepIndex = null } = opts;
   const PARITY_ODD = '#e67e22', PARITY_EVEN = '#3498db'; // View menu: parity coloring (CVD-safe orange/blue)
+  const PRIME_COLOR = '#e040fb'; // View menu: prime highlight (magenta — distinct from gradient/parity)
 
   // Background
   ctx.fillStyle = theme.canvasBg;
@@ -1047,10 +1104,11 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
 
     // (no hover highlight — clicking shows a tooltip instead)
 
-    // Node circle
+    // Node circle (fill precedence: seed → prime (if "Color primes") → parity (if "Parity coloring") → value gradient)
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
     ctx.fillStyle = isStart ? '#9b5fc0'
+                  : (colorPrimes && isPrime(val)) ? PRIME_COLOR
                   : parityColoring ? (val % 2 === 0 ? PARITY_EVEN : PARITY_ODD)
                   : valColor(val);
     ctx.fill();
@@ -1151,7 +1209,8 @@ function App() {
   const paramsRef = useRef({ m, a, d });
   const themeRef = useRef(THEME_PRESETS.dark);
   const showGridRef = useRef(true);
-  const showCycleLayoutRef = useRef(false);
+  const layoutModeRef = useRef('spread');     // 'spread' (force) | 'polygon' | 'star' | 'sorted' | 'parity'
+  const colorPrimesRef = useRef(false);       // View menu: color prime-valued nodes
   const langRef = useRef('en'); // kept in sync with `language` so the canvas watermark can translate
   const showStepNumbersRef = useRef(false);   // View menu: small step-index badges on nodes
   const parityColoringRef  = useRef(false);   // View menu: color nodes by odd/even
@@ -1175,7 +1234,8 @@ function App() {
   const [gridCount, setGridCount] = useState(4);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
-  const [showCycleLayout, setShowCycleLayout] = useState(false);
+  const [layoutMode, setLayoutMode] = useState('spread');
+  const [colorPrimes, setColorPrimes] = useState(false);
   const [useLightTheme, setUseLightTheme] = useState(false);
   const [maxVisibleSteps, setMaxVisibleSteps] = useState(50);
   const [language, setLanguage] = useState(() => localStorage.getItem('orbit_language') || 'en');
@@ -1545,14 +1605,14 @@ function App() {
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
   }, [showViewMenu]);
-  // Toggling Show Cycles repositions every node (cycle layout ↔ force layout):
-  // snap the view back to 100% (so the rearranged graph isn't stranded off-screen),
-  // then auto-fit once the new layout settles.
+  useEffect(() => { colorPrimesRef.current = colorPrimes; }, [colorPrimes]);
+  // Changing the layout repositions every node: snap the view to 100% (so the
+  // rearranged graph isn't stranded off-screen), then auto-fit once it settles.
   useEffect(() => {
-    showCycleLayoutRef.current = showCycleLayout;
+    layoutModeRef.current = layoutMode;
     resetView();
     scheduleAutoFit();
-  }, [showCycleLayout]);
+  }, [layoutMode]);
 
   // Rebuild graph when maxVisibleSteps changes
   useEffect(() => {
@@ -1602,16 +1662,17 @@ function App() {
       if (!alive) return;
       const cvs = canvasRef.current;
       if (cvs && cvs.width > 0) {
-        if (showCycleLayoutRef.current) {
-          applyCycleLayout(nodesRef.current, edgesRef.current, cyclesRef.current, cvs.width, cvs.height);
-        } else {
+        if (layoutModeRef.current === 'spread') {
           physicsStep(nodesRef.current, edgesRef.current, cvs.width, cvs.height);
+        } else {
+          applyCycleLayout(nodesRef.current, edgesRef.current, cyclesRef.current, cvs.width, cvs.height, layoutModeRef.current);
         }
         drawGraph(cvs, nodesRef.current, edgesRef.current,
             cyclesRef.current, startNodesRef.current, Date.now(),
             paramsRef.current.m, paramsRef.current.a, paramsRef.current.d,
                   hoveredNodeRef.current, themeRef.current, showGridRef.current, viewRef.current, langRef.current,
-                  { showStepNumbers: showStepNumbersRef.current, parityColoring: parityColoringRef.current, stepIndex: stepIndexRef.current });
+                  { showStepNumbers: showStepNumbersRef.current, parityColoring: parityColoringRef.current,
+                    colorPrimes: colorPrimesRef.current, stepIndex: stepIndexRef.current });
       }
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -2139,16 +2200,33 @@ function App() {
               {showViewMenu && (
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30,
-                  minWidth: 220, background: uiTheme.panelBg, border: `1px solid ${uiTheme.borderStrong}`,
+                  minWidth: 230, background: uiTheme.panelBg, border: `1px solid ${uiTheme.borderStrong}`,
                   borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.5)', padding: '8px 0',
                   color: uiTheme.textPrimary, fontWeight: 'normal',
                 }}>
-                  {/* cycle-layout modes (Polygon / Star / Sorted / Parity-split) land in the next sub-step */}
-                  <label title={t('stepNumbersHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
+                  <div style={{ padding: '2px 14px 4px', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, color: uiTheme.textMuted, textTransform: 'uppercase' }}>{t('layoutHeader')}</div>
+                  {[
+                    ['spread',  t('layoutSpread'),  t('layoutSpreadHelp')],
+                    ['polygon', t('layoutPolygon'), t('layoutPolygonHelp')],
+                    ['star',    t('layoutStar'),    t('layoutStarHelp')],
+                    ['sorted',  t('layoutSorted'),  t('layoutSortedHelp')],
+                    ['parity',  t('layoutParity'),  t('layoutParityHelp')],
+                  ].map(([mode, label, help]) => (
+                    <label key={mode} title={help} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                      <input type="radio" name="layoutMode" checked={layoutMode === mode} onChange={() => setLayoutMode(mode)} />
+                      {label}
+                    </label>
+                  ))}
+                  <div style={{ height: 1, background: uiTheme.border, margin: '6px 10px' }} />
+                  <label title={t('colorPrimesHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={colorPrimes} onChange={e => setColorPrimes(e.target.checked)} />
+                    {t('colorPrimesLabel')}
+                  </label>
+                  <label title={t('stepNumbersHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={showStepNumbers} onChange={e => setShowStepNumbers(e.target.checked)} />
                     {t('stepNumbersLabel')}
                   </label>
-                  <label title={t('parityHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
+                  <label title={t('parityHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={parityColoring} onChange={e => setParityColoring(e.target.checked)} />
                     {t('parityLabel')}
                   </label>
@@ -2337,26 +2415,6 @@ function App() {
               onChange={e => setUseLightTheme(e.target.checked)}
             />
             {t('lightTheme')}
-          </label>
-          <label
-            title={t('cycleLayoutHelp')}
-            style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            background: uiTheme.overlayBgSoft,
-            border: `1px solid ${uiTheme.border}`,
-            color: uiTheme.textPrimary,
-            borderRadius: 6,
-            padding: '6px 11px',
-            fontSize: 14,
-          }}>
-            <input
-              type="checkbox"
-              checked={showCycleLayout}
-              onChange={e => setShowCycleLayout(e.target.checked)}
-            />
-            {t('showCycles')}
           </label>
         </div>
 
