@@ -1453,8 +1453,13 @@ function App() {
   useEffect(() => { paramsRef.current = { m, a, d }; }, [m, a, d]);
   useEffect(() => { themeRef.current = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark; }, [useLightTheme]);
   useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
-  useEffect(() => { showCycleLayoutRef.current = showCycleLayout; }, [showCycleLayout]);
-  
+  // Toggling Show Cycles repositions every node (cycle layout ↔ force layout),
+  // so reset the zoom/pan view too — otherwise the rearranged graph can land off-screen.
+  useEffect(() => {
+    showCycleLayoutRef.current = showCycleLayout;
+    resetView();
+  }, [showCycleLayout]);
+
   // Rebuild graph when maxVisibleSteps changes
   useEffect(() => {
     if (sequencesRef.current.length > 0) {
@@ -1464,8 +1469,15 @@ function App() {
 
   // Load one example trajectory on mount (the `seed` URL param, default 27).
   // Single example because a new seed now replaces the canvas (Revision 4) — no overlay.
+  // After the force layout settles, fit it to the canvas — the first example reads much better zoomed in.
   useEffect(() => {
-    const tid = setTimeout(() => addNumberVal(seed), 300);
+    const tid = setTimeout(() => {
+      addNumberVal(seed);
+      setTimeout(() => {
+        const v = viewRef.current;
+        if (v.scale === 1 && v.x === 0 && v.y === 0) fitToCanvas();
+      }, 1600);
+    }, 300);
     return () => clearTimeout(tid);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1482,15 +1494,14 @@ function App() {
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  // Wheel / pinch → zoom centered on the cursor (Revision 6).
+  // Wheel / pinch → zoom (anchored on the graph center, so it just scales in place).
   // Attached manually because React's onWheel is passive (can't preventDefault).
   useEffect(() => {
     const cvs = canvasRef.current;
     if (!cvs) return;
     const onWheel = (e) => {
       e.preventDefault();
-      const rect = cvs.getBoundingClientRect();
-      zoomAround(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0016));
+      zoomCentered(Math.exp(-e.deltaY * 0.0016));
     };
     cvs.addEventListener('wheel', onWheel, { passive: false });
     return () => cvs.removeEventListener('wheel', onWheel);
@@ -1706,6 +1717,33 @@ function App() {
     setZoomPct(100);
   }
 
+  // Bounding box of the current node positions (in world coords), padded by `pad`.
+  function nodesBBox(pad = 0) {
+    const nodes = nodesRef.current;
+    if (!nodes || nodes.size === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const pos of nodes.values()) {
+      if (pos.x - pad < minX) minX = pos.x - pad;
+      if (pos.x + pad > maxX) maxX = pos.x + pad;
+      if (pos.y - pad < minY) minY = pos.y - pad;
+      if (pos.y + pad > maxY) maxY = pos.y + pad;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  // Screen-coords of the graph's center — used as the zoom anchor so zooming
+  // just scales the graph in place rather than chasing the cursor.
+  function graphAnchor() {
+    const cvs = canvasRef.current;
+    const W = cvs?.width ?? 900, H = cvs?.height ?? 560;
+    const b = nodesBBox();
+    if (!b) return { x: W / 2, y: H / 2 };
+    const v = viewRef.current;
+    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+    return { x: cx * v.scale + v.x, y: cy * v.scale + v.y };
+  }
+
+  // Zoom keeping the given screen point fixed (used by wheel — anchored on the graph center).
   function zoomAround(screenX, screenY, factor) {
     const v = viewRef.current;
     const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.scale * factor));
@@ -1715,29 +1753,22 @@ function App() {
     setZoomPct(Math.round(newScale * 100));
   }
 
-  function zoomButton(factor) {
-    const cvs = canvasRef.current;
-    zoomAround((cvs?.width ?? 900) / 2, (cvs?.height ?? 560) / 2, factor);
+  // Zoom by a factor, anchored on the graph's center (so the graph grows/shrinks in place).
+  function zoomCentered(factor) {
+    const a = graphAnchor();
+    zoomAround(a.x, a.y, factor);
   }
 
   function fitToCanvas() {
     const cvs = canvasRef.current;
     if (!cvs) return;
     const W = cvs.width || 900, H = cvs.height || 560;
-    const nodes = nodesRef.current;
-    if (!nodes || nodes.size === 0) { resetView(); return; }
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const pos of nodes.values()) {
-      const r = START_R + 8;
-      if (pos.x - r < minX) minX = pos.x - r;
-      if (pos.x + r > maxX) maxX = pos.x + r;
-      if (pos.y - r < minY) minY = pos.y - r;
-      if (pos.y + r > maxY) maxY = pos.y + r;
-    }
-    const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+    const b = nodesBBox(START_R + 8);
+    if (!b) { resetView(); return; }
+    const bw = Math.max(1, b.maxX - b.minX), bh = Math.max(1, b.maxY - b.minY);
     // ~8% margin; don't over-zoom a small graph (cap the fit zoom-in at 2.5×)
     const scale = Math.max(MIN_ZOOM, Math.min(2.5, MAX_ZOOM, Math.min(W / bw, H / bh) * 0.92));
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
     viewRef.current = { scale, x: W / 2 - cx * scale, y: H / 2 - cy * scale };
     setZoomPct(Math.round(scale * 100));
   }
@@ -2098,13 +2129,13 @@ function App() {
           borderRadius: 8, padding: '4px 6px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           color: uiTheme.textPrimary, userSelect: 'none',
         }}>
-          <button type="button" onClick={() => zoomButton(0.8)} title="Zoom out" aria-label="Zoom out" style={{
+          <button type="button" onClick={() => zoomCentered(0.8)} title="Zoom out" aria-label="Zoom out" style={{
             width: 26, height: 26, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 18, fontWeight: 'bold',
             lineHeight: 1, padding: 0, cursor: 'pointer',
           }}>−</button>
           <span style={{ minWidth: 50, textAlign: 'center', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{zoomPct}%</span>
-          <button type="button" onClick={() => zoomButton(1.25)} title="Zoom in" aria-label="Zoom in" style={{
+          <button type="button" onClick={() => zoomCentered(1.25)} title="Zoom in" aria-label="Zoom in" style={{
             width: 26, height: 26, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 18, fontWeight: 'bold',
             lineHeight: 1, padding: 0, cursor: 'pointer',
