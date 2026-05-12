@@ -184,7 +184,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: 'Color primes',
     colorPrimesHelp: 'Gives prime numbers (2, 3, 5, 7, 11, …) their own color so they stand out from the rest.',
     view: 'View',
-    aboutAppHelp: 'Click for info about this app (opens the project page on GitHub).',
+    aboutAppHelp: 'Click to see info about this app on GitHub. (Use your browser\'s Back button to return here.)',
     stepNumbersLabel: 'Show step numbers',
     stepNumbersHelp: 'Labels each circle with its place in the sequence: 0 is your starting value, 1 is the next number, 2 is the one after that, and so on.',
     parityLabel: 'Parity coloring',
@@ -298,7 +298,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: 'Color para primos',
     colorPrimesHelp: 'Da a los números primos (2, 3, 5, 7, 11, …) su propio color para que destaquen del resto.',
     view: 'Vista',
-    aboutAppHelp: 'Haz clic para ver información sobre la app (abre la página del proyecto en GitHub).',
+    aboutAppHelp: 'Haz clic para ver información sobre la app en GitHub. (Usa el botón Atrás del navegador para volver aquí.)',
     stepNumbersLabel: 'Mostrar números de paso',
     stepNumbersHelp: 'Etiqueta cada círculo con su lugar en la secuencia: 0 es tu valor inicial, 1 es el siguiente número, 2 es el de después, y así sucesivamente.',
     parityLabel: 'Color por paridad',
@@ -412,7 +412,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: '为质数着色',
     colorPrimesHelp: '给质数（2、3、5、7、11……）一个专属颜色，让它们从其他数字中突显出来。',
     view: '视图',
-    aboutAppHelp: '点击查看关于此应用的信息（在 GitHub 上打开项目页面）。',
+    aboutAppHelp: '点击在 GitHub 上查看关于此应用的信息。（用浏览器的“后退”按钮返回这里。）',
     stepNumbersLabel: '显示步数编号',
     stepNumbersHelp: '为每个圆圈标注它在序列中的位置：0 是你的起始值，1 是下一个数字，2 是再下一个，依此类推。',
     parityLabel: '按奇偶着色',
@@ -2117,8 +2117,6 @@ function App() {
       }}>
         <a
           href="https://github.com/OhioMathTeacher/orbit-explorer-classroom#readme"
-          target="_blank"
-          rel="noopener noreferrer"
           title={t('aboutAppHelp')}
           style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 19, whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
           {t('appName')}
