@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Orbit Explorer</title>
+  <script>
+    (function forceFreshLoad() {
+      var BUILD = '3441dd0-r2';
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('fr') !== BUILD || !params.has('cb')) {
+        params.set('fr', BUILD);
+        params.set('cb', String(Date.now()));
+        var next = window.location.pathname + '?' + params.toString() + window.location.hash;
+        window.location.replace(next);
+        return;
+      }
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+      }
+
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(k) { caches.delete(k); });
+        });
+      }
+    })();
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #131e3a; color: white; font-family: 'Segoe UI', monospace; overflow: hidden; }
+    button { cursor: pointer; font-family: inherit; }
+    input { font-family: inherit; }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+    input[type=range] { accent-color: #5588dd; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const MAX_ITER  = 600;    // max steps before timeout
+const MAX_VAL   = 1e12;   // divergence threshold
+const MAX_START = 1e9;    // largest allowed starting value from the UI
+const MAX_NODES = 120;    // cap displayed nodes
+const NODE_R    = 15;     // base node radius px
+const START_R   = 22;     // radius for starting numbers (persistent anchor)
+const RELIABLE_START_LIMIT = Math.min(MAX_START, Number.MAX_SAFE_INTEGER);
+const PARAM_COLORS = {
+  m: '#63d471',
+  a: '#ffb347',
+  d: '#6bb7ff',
+};
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Espanol' },
+  { value: 'zh-Hans', label: '简体中文' },
+];
+const RESPONSE_LANGUAGE_NAMES = {
+  en: 'English',
+  es: 'Spanish',
+  'zh-Hans': 'Simplified Chinese',
+};
+const CHAT_KEY_STORAGE = 'zhenggpt_key';
+
+function detectChatProvider(apiKey) {
+  return apiKey.trim().startsWith('sk-or-v1-') ? 'openrouter' : 'deepseek';
+}
+
+function getChatRequestConfig(apiKey, messages, language) {
+  const provider = detectChatProvider(apiKey);
+  const systemMessage = { role: 'system', content: buildSystemPrompt(language) };
+
+  if (provider === 'openrouter') {
+    return {
+      endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': window.location.href,
+        'X-Title': 'Orbit Explorer',
+      },
+      body: {
+        model: 'deepseek/deepseek-chat',
+        messages: [systemMessage, ...messages],
+        max_tokens: 200,
+      },
+    };
+  }
+
+  return {
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: {
+      model: 'deepseek-chat',
+      messages: [systemMessage, ...messages],
+      max_tokens: 200,
+    },
+  };
+}
+
+function getChatErrorMessage(error, language) {
+  if (error?.message) return error.message;
+  if (language === 'es') return 'Error de red. Revisa tu conexion.';
+  if (language === 'zh-Hans') return '网络错误。请检查你的连接。';
+  return 'Network error. Check your connection.';
+}
+
+const TRANSLATIONS = {
+  en: {
+    appName: 'Orbit Explorer',
+    language: 'Language',
+    singleStartValue: 'Single start value',
+    add: 'Add',
+    reset: 'Reset',
+    cases: 'Cases',
+    saveLatestCase: 'Save Latest Case',
+    latestCaseSaved: 'Latest Case Saved',
+    saveLatestCaseDisabled: 'Save Latest Case',
+    saveCaseHelp: 'Save the most recent result here, or open Cases and save any row from Recent Results.',
+    valueLimitReached: 'VALUE LIMIT REACHED',
+    startingValueExceeded: 'Starting value {start} exceeded {max} after {steps} steps',
+    valueLimitExplanation: 'This is not an input error. The sequence kept growing, so the app stopped once it crossed the current exploration ceiling. Peak value reached: {maxValue}.',
+    continue: 'CONTINUE',
+    resetLayout: 'Reset Layout',
+    dragHelp: 'Drag any number ball to pin it in place. Reset Layout releases pinned nodes and lets the layout settle again.',
+    grid: 'Grid',
+    lightTheme: 'Light Theme',
+    close: 'Close',
+    recentResults: 'Recent Results',
+    savedCases: 'Saved Cases',
+    casesExplanation: 'Recent Results fill automatically every time you add a start value. Saved Cases are the examples students choose to keep for pattern-hunting.',
+    start: 'Start',
+    outcome: 'Outcome',
+    steps: 'Steps',
+    peak: 'Peak',
+    keep: 'Keep',
+    noResultsYet: 'No results yet. Add a starting value to create a case.',
+    save: 'Save',
+    saved: 'Saved',
+    clearSaved: 'Clear Saved',
+    remove: 'Remove',
+    noSavedCasesYet: 'No saved cases yet. Save a few interesting examples from Recent Results to compare patterns.',
+    enterApiKey: 'Enter your ZhengGPT API key (OpenRouter or DeepSeek):',
+    saveKey: 'Save Key',
+    getApiKeysAt: 'Get keys at',
+    noKey: 'no key',
+    changeKey: 'Change Key',
+    keyDetected: 'Detected: {provider}',
+    zhengThinking: 'ZhengGPT is thinking...',
+    downloadChat: 'Download Chat',
+    askZheng: 'Ask ZhengGPT...',
+    send: 'Send',
+    dataReferenceGrids: 'DATA REFERENCE GRIDS',
+    gridWindow: 'GRID WINDOW',
+    startAt: 'Start at',
+    blocks: 'Blocks',
+    usePreviousNext: 'Use Previous/Next to move the visible window.',
+    previous: 'Previous',
+    next: 'Next',
+    recentStarts: 'RECENT STARTS',
+    largeValuesAppear: 'Large starting values will appear here and in the table.',
+    useGridControls: 'Use the grid window controls to jump anywhere. Larger values stay visible in Recent Starts and the table.',
+    colorScale: 'Color scale:',
+    green: 'green',
+    yellow: 'yellow',
+    orange: 'orange',
+    red: 'red',
+    greenShows: 'Green shows smaller values; red shows larger values.',
+    glowingNodes: 'Glowing nodes mark detected cycle values.',
+    addValueTitle: 'Add {value}',
+    startLimitAbove: "Start values above {limit} are outside the applet's reliable range.",
+    startLimitUnsafe: 'That value is larger than JavaScript can track reliably as an exact integer.',
+    startLimitInvalid: 'Enter a positive whole number within the supported range.',
+    transcriptTitle: 'ORBIT EXPLORER - CHAT TRANSCRIPT',
+    transcriptDate: 'Date/Time',
+    transcriptParameters: 'Parameters',
+    transcriptNumbersExplored: 'Numbers Explored',
+    transcriptSummary: 'EXPLORATION SUMMARY',
+    transcriptConversation: 'CONVERSATION WITH ZhengGPT',
+    transcriptEnd: 'End of transcript',
+    chatGreeting: "Hi! I'm here to help you think through what you're discovering. What patterns are you noticing in your sequences?",
+    outcomes: {
+      converge: 'converges -> 1',
+      cycle: 'enters cycle',
+      diverge: 'diverges',
+      noninteger: 'non-integer',
+      timeout: 'timed out',
+    },
+  },
+  es: {
+    appName: 'Orbit Explorer',
+    language: 'Idioma',
+    singleStartValue: 'Valor inicial',
+    add: 'Agregar',
+    reset: 'Reiniciar',
+    cases: 'Casos',
+    saveLatestCase: 'Guardar ultimo caso',
+    latestCaseSaved: 'Ultimo caso guardado',
+    saveLatestCaseDisabled: 'Guardar ultimo caso',
+    saveCaseHelp: 'Guarda aqui el resultado mas reciente o abre Casos para guardar cualquier fila de Resultados recientes.',
+    valueLimitReached: 'LIMITE DE VALOR ALCANZADO',
+    startingValueExceeded: 'El valor inicial {start} supero {max} despues de {steps} pasos',
+    valueLimitExplanation: 'No es un error de entrada. La secuencia siguio creciendo, asi que la app se detuvo cuando cruzo el limite actual de exploracion. Valor maximo alcanzado: {maxValue}.',
+    continue: 'CONTINUAR',
+    resetLayout: 'Restablecer diseno',
+    dragHelp: 'Arrastra cualquier bola numerica para fijarla en su lugar. Restablecer diseno libera los nodos fijados y deja que el diseno se acomode otra vez.',
+    grid: 'Cuadricula',
+    lightTheme: 'Tema claro',
+    close: 'Cerrar',
+    recentResults: 'Resultados recientes',
+    savedCases: 'Casos guardados',
+    casesExplanation: 'Resultados recientes se llena automaticamente cada vez que agregas un valor inicial. Casos guardados contiene los ejemplos que el estudiantado decide conservar para buscar patrones.',
+    start: 'Inicio',
+    outcome: 'Resultado',
+    steps: 'Pasos',
+    peak: 'Maximo',
+    keep: 'Guardar',
+    noResultsYet: 'Todavia no hay resultados. Agrega un valor inicial para crear un caso.',
+    save: 'Guardar',
+    saved: 'Guardado',
+    clearSaved: 'Borrar guardados',
+    remove: 'Quitar',
+    noSavedCasesYet: 'Todavia no hay casos guardados. Guarda algunos ejemplos interesantes de Resultados recientes para comparar patrones.',
+    enterApiKey: 'Ingresa tu clave API de ZhengGPT (OpenRouter o DeepSeek):',
+    saveKey: 'Guardar clave',
+    getApiKeysAt: 'Consigue claves en',
+    noKey: 'sin clave',
+    changeKey: 'Cambiar clave',
+    keyDetected: 'Detectado: {provider}',
+    zhengThinking: 'ZhengGPT esta pensando...',
+    downloadChat: 'Descargar chat',
+    askZheng: 'Preguntale a ZhengGPT...',
+    send: 'Enviar',
+    dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
+    gridWindow: 'VENTANA DE CUADRICULA',
+    startAt: 'Empezar en',
+    blocks: 'Bloques',
+    usePreviousNext: 'Usa Anterior/Siguiente para mover la ventana visible.',
+    previous: 'Anterior',
+    next: 'Siguiente',
+    recentStarts: 'INICIOS RECIENTES',
+    largeValuesAppear: 'Los valores iniciales grandes apareceran aqui y en la tabla.',
+    useGridControls: 'Usa los controles de la ventana para saltar a cualquier lugar. Los valores grandes siguen visibles en Inicios recientes y en la tabla.',
+    colorScale: 'Escala de color:',
+    green: 'verde',
+    yellow: 'amarillo',
+    orange: 'naranja',
+    red: 'rojo',
+    greenShows: 'El verde muestra valores mas pequenos; el rojo muestra valores mas grandes.',
+    glowingNodes: 'Los nodos brillantes marcan valores de ciclo detectados.',
+    addValueTitle: 'Agregar {value}',
+    startLimitAbove: 'Los valores iniciales mayores que {limit} estan fuera del rango confiable de la app.',
+    startLimitUnsafe: 'Ese valor es mas grande de lo que JavaScript puede seguir de forma confiable como entero exacto.',
+    startLimitInvalid: 'Ingresa un numero entero positivo dentro del rango permitido.',
+    transcriptTitle: 'TRANSCRIPCION DE ORBIT EXPLORER',
+    transcriptDate: 'Fecha/Hora',
+    transcriptParameters: 'Parametros',
+    transcriptNumbersExplored: 'Valores explorados',
+    transcriptSummary: 'RESUMEN DE EXPLORACION',
+    transcriptConversation: 'CONVERSACION CON ZhengGPT',
+    transcriptEnd: 'Fin de la transcripcion',
+    chatGreeting: 'Hola. Estoy aqui para ayudarte a pensar sobre lo que estas descubriendo. Que patrones notas en tus secuencias?',
+    outcomes: {
+      converge: 'converge -> 1',
+      cycle: 'entra en ciclo',
+      diverge: 'diverge',
+      noninteger: 'no entero',
+      timeout: 'se agoto el tiempo',
+    },
+  },
+  'zh-Hans': {
+    appName: 'Orbit Explorer',
+    language: '语言',
+    singleStartValue: '输入起始值',
+    add: '添加',
+    reset: '重置',
+    cases: '案例',
+    saveLatestCase: '保存最新案例',
+    latestCaseSaved: '最新案例已保存',
+    saveLatestCaseDisabled: '保存最新案例',
+    saveCaseHelp: '在这里保存最新结果，或者打开“案例”保存“最近结果”中的任意一行。',
+    valueLimitReached: '达到数值上限',
+    startingValueExceeded: '起始值 {start} 在 {steps} 步后超过了 {max}',
+    valueLimitExplanation: '这不是输入错误。序列持续增长，所以程序在超过当前探索上限时停止。达到的最大值是 {maxValue}。',
+    continue: '继续',
+    resetLayout: '重置布局',
+    dragHelp: '拖动任意数字球即可将它固定在当前位置。重置布局会释放固定节点，并让布局重新整理。',
+    grid: '网格',
+    lightTheme: '浅色主题',
+    close: '关闭',
+    recentResults: '最近结果',
+    savedCases: '已保存案例',
+    casesExplanation: '每次添加起始值时，“最近结果”都会自动更新。“已保存案例”用于保留学生想比较的有趣例子。',
+    start: '起始值',
+    outcome: '结果',
+    steps: '步数',
+    peak: '峰值',
+    keep: '保存',
+    noResultsYet: '还没有结果。先添加一个起始值来生成案例。',
+    save: '保存',
+    saved: '已保存',
+    clearSaved: '清空已保存',
+    remove: '删除',
+    noSavedCasesYet: '还没有保存的案例。请从“最近结果”中保存几个有趣的例子来比较模式。',
+    enterApiKey: '输入你的 ZhengGPT API 密钥（OpenRouter 或 DeepSeek）：',
+    saveKey: '保存密钥',
+    getApiKeysAt: '可在此获取密钥：',
+    noKey: '无密钥',
+    changeKey: '更改密钥',
+    keyDetected: '已识别：{provider}',
+    zhengThinking: 'ZhengGPT 正在思考……',
+    downloadChat: '下载聊天记录',
+    askZheng: '向 ZhengGPT 提问……',
+    send: '发送',
+    dataReferenceGrids: '参考网格',
+    gridWindow: '网格窗口',
+    startAt: '起始于',
+    blocks: '区块数',
+    usePreviousNext: '使用“上一页/下一页”移动当前可见窗口。',
+    previous: '上一页',
+    next: '下一页',
+    recentStarts: '最近起始值',
+    largeValuesAppear: '较大的起始值会显示在这里以及表格中。',
+    useGridControls: '使用网格窗口控件可跳转到任意位置。较大的数值会继续显示在“最近起始值”和表格中。',
+    colorScale: '颜色刻度：',
+    green: '绿色',
+    yellow: '黄色',
+    orange: '橙色',
+    red: '红色',
+    greenShows: '绿色表示较小的数值；红色表示较大的数值。',
+    glowingNodes: '发光节点表示检测到的循环数值。',
+    addValueTitle: '添加 {value}',
+    startLimitAbove: '大于 {limit} 的起始值超出了本程序的可靠范围。',
+    startLimitUnsafe: '这个值已经大到 JavaScript 无法可靠地精确表示为整数。',
+    startLimitInvalid: '请输入可靠范围内的正整数。',
+    transcriptTitle: 'ORBIT EXPLORER 聊天记录',
+    transcriptDate: '日期/时间',
+    transcriptParameters: '参数',
+    transcriptNumbersExplored: '已探索的起始值数量',
+    transcriptSummary: '探索摘要',
+    transcriptConversation: '与 ZhengGPT 的对话',
+    transcriptEnd: '记录结束',
+    chatGreeting: '你好。我会帮助你思考自己发现了什么。你在这些序列中注意到了哪些模式？',
+    outcomes: {
+      converge: '收敛到 1',
+      cycle: '进入循环',
+      diverge: '发散',
+      noninteger: '非整数',
+      timeout: '超时',
+    },
+  },
+};
+const THEME_PRESETS = {
+  dark: {
+    pageBg: '#131e3a',
+    topBarBg: '#0d1528',
+    panelBg: '#0a1020',
+    panelBgAlt: '#0f1a2a',
+    surfaceBg: '#162040',
+    surfaceBgMuted: '#101a31',
+    textPrimary: '#ffffff',
+    textSecondary: '#99bbee',
+    textMuted: '#7f93b0',
+    titleText: '#7aaaf0',
+    border: '#1e2f55',
+    borderStrong: '#3355aa',
+    overlayBg: 'rgba(10, 20, 40, 0.92)',
+    overlayBgSoft: 'rgba(10, 20, 40, 0.82)',
+    canvasBg: '#131e3a',
+    canvasGrid: 'rgba(40,60,100,0.4)',
+    canvasEdge: 'rgba(80, 140, 220, 0.5)',
+    canvasEdgeHead: 'rgba(80, 140, 220, 0.8)',
+    canvasWatermark: 'rgba(255,255,255,0.9)',
+    canvasAnnotation: 'rgba(255,255,255,0.82)',
+  },
+  light: {
+    pageBg: '#eef4ff',
+    topBarBg: '#dde9ff',
+    panelBg: '#f7faff',
+    panelBgAlt: '#edf3ff',
+    surfaceBg: '#ffffff',
+    surfaceBgMuted: '#e7efff',
+    textPrimary: '#11233f',
+    textSecondary: '#2b4f82',
+    textMuted: '#536c92',
+    titleText: '#2d62a8',
+    border: '#bdd0ef',
+    borderStrong: '#7399d9',
+    overlayBg: 'rgba(245, 249, 255, 0.94)',
+    overlayBgSoft: 'rgba(235, 243, 255, 0.9)',
+    canvasBg: '#f4f8ff',
+    canvasGrid: 'rgba(150,175,215,0.55)',
+    canvasEdge: 'rgba(70, 110, 185, 0.55)',
+    canvasEdgeHead: 'rgba(70, 110, 185, 0.82)',
+    canvasWatermark: 'rgba(24,46,84,0.82)',
+    canvasAnnotation: 'rgba(24,46,84,0.72)',
+  },
+};
+
+function interpolate(template, values) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? '');
+}
+
+function translate(language, key, values) {
+  const source = TRANSLATIONS[language] || TRANSLATIONS.en;
+  const fallback = TRANSLATIONS.en;
+  const result = key.split('.').reduce((acc, part) => acc && acc[part], source)
+    ?? key.split('.').reduce((acc, part) => acc && acc[part], fallback)
+    ?? key;
+  return values ? interpolate(result, values) : result;
+}
+
+function buildSystemPrompt(language) {
+  const responseLanguage = RESPONSE_LANGUAGE_NAMES[language] || RESPONSE_LANGUAGE_NAMES.en;
+  return `You are ZhengGPT, a mathematical thinking partner helping students investigate a parameterized sequence rule.
+
+CONTEXT - What the student sees in the applet:
+- An interactive graph showing sequences as connected nodes (bubbles) with arrows
+- Each starting number they enter creates a visual path through the graph
+- The rule is: f(n) = n/d (if even) or f(n) = mn + b (if odd), where m, b, and d are parameters they can adjust
+- Outcomes are automatically detected: converges to 1, enters a cycle, or diverges
+- A results log shows which numbers they've tested and what happened
+- They can click nodes to inspect them and view saved cases
+- There is a bright orange "Download Chat" button at the bottom of this chat panel that saves the conversation as a text file
+
+WHAT YOU CAN'T SEE:
+- You cannot see the visual graph or their data table
+- You don't know which specific numbers they've tried unless they tell you
+- You don't know their current m, b, and d parameter values unless they tell you
+
+YOUR ROLE:
+- Help them notice patterns in the data THEY describe to you
+- Ask questions that push them to test specific hypotheses
+- Never compute sequences yourself - the applet does that instantly
+- Never tell them what will happen - ask them to test it and report back
+- Never reveal this is related to the Collatz conjecture or mention "Collatz" by name
+- If they haven't told you their parameters or data, ask them to describe what they're seeing first
+- If they ask about saving/downloading the chat, tell them to click the bright orange "Download Chat" button at the bottom of the chat panel
+
+RESPONSE STYLE:
+- Keep answers short (2-4 sentences max)
+- Ask ONE focused question at a time
+- If they ask you to "just tell them," playfully refuse and redirect to what they could try next
+- Be encouraging when they make observations
+- Always respond in ${responseLanguage}, based on the language dropdown selected in the app
+
+REMEMBER: You're a thinking partner, not an oracle. Your job is to help them think through their own observations, not to give them answers or make claims about sequences you haven't seen.`;
+}
+
+function formatValue(value) {
+  return Number.isFinite(value) ? value.toLocaleString() : String(value);
+}
+
+function measureSegmentWidth(ctx, text) {
+  return ctx.measureText(text).width;
+}
+
+function drawCenteredSegments(ctx, centerX, y, segments) {
+  const totalWidth = segments.reduce((sum, segment) => sum + measureSegmentWidth(ctx, segment.text), 0);
+  let cursorX = centerX - totalWidth / 2;
+  for (const segment of segments) {
+    ctx.fillStyle = segment.color;
+    ctx.fillText(segment.text, cursorX, y);
+    cursorX += measureSegmentWidth(ctx, segment.text);
+  }
+}
+
+function getSegmentsWidth(ctx, segments) {
+  return segments.reduce((sum, segment) => sum + measureSegmentWidth(ctx, segment.text), 0);
+}
+
+function drawFormulaLine(ctx, centerX, y, equationSegments, annotation, annotationColor, gap) {
+  const equationWidth = getSegmentsWidth(ctx, equationSegments);
+  const annotationWidth = measureSegmentWidth(ctx, annotation);
+  const totalWidth = equationWidth + gap + annotationWidth;
+  let cursorX = centerX - totalWidth / 2;
+
+  for (const segment of equationSegments) {
+    ctx.fillStyle = segment.color;
+    ctx.fillText(segment.text, cursorX, y);
+    cursorX += measureSegmentWidth(ctx, segment.text);
+  }
+
+  cursorX += gap;
+  ctx.fillStyle = annotationColor;
+  ctx.fillText(annotation, cursorX, y);
+}
+
+function clampNodePosition(value, radius, max) {
+  return Math.max(radius + 2, Math.min(max - radius - 2, value));
+}
+
+function getNodeRadius(position, startNodes, now) {
+  const elapsed  = (now - position.birthTime) / 1000;
+  const popScale = 1 + 2.2 * Math.exp(-elapsed * 2.8);
+  const baseR    = startNodes.has(position.value) ? START_R : NODE_R;
+  return baseR * popScale;
+}
+
+function findNodeAt(nodes, startNodes, x, y, now) {
+  const entries = [...nodes.entries()].reverse();
+  for (const [value, position] of entries) {
+    position.value = value;
+    const radius = getNodeRadius(position, startNodes, now);
+    const dx = x - position.x;
+    const dy = y - position.y;
+    if (dx * dx + dy * dy <= radius * radius) {
+      return { value, position, radius };
+    }
+  }
+  return null;
+}
+
+function normalizeIntegerInput(value) {
+  return String(value ?? '').replace(/[,_\s]/g, '');
+}
+
+function parseSingleStartInput(rawValue) {
+  const normalized = normalizeIntegerInput(rawValue);
+  if (!normalized) return { kind: 'empty' };
+  if (!/^\d+$/.test(normalized)) return { kind: 'invalid' };
+
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value)) return { kind: 'unsafe', value };
+  if (value <= 0) return { kind: 'invalid' };
+  if (value > RELIABLE_START_LIMIT) return { kind: 'above-limit', value };
+
+  return { kind: 'ok', value };
+}
+
+function getStartLimitWarning(rawValue, language) {
+  const parsed = parseSingleStartInput(rawValue);
+  if (parsed.kind === 'above-limit') {
+    return translate(language, 'startLimitAbove', { limit: formatValue(RELIABLE_START_LIMIT) });
+  }
+  if (parsed.kind === 'unsafe') {
+    return translate(language, 'startLimitUnsafe');
+  }
+  return '';
+}
+
+// ── Sequence computation ──────────────────────────────────────────────────────
+function computeSeq(start, m, a, d) {
+  const seq    = [start];
+  const seen   = new Map([[start, 0]]);
+  let n = start;
+  let maxValue = start;
+
+  for (let i = 0; i < MAX_ITER; i++) {
+    let next;
+    if (n % 2 === 0) {
+      next = n / d;
+    } else {
+      next = m * n + a;
+    }
+    maxValue = Math.max(maxValue, next);
+    if (!Number.isInteger(next) || next <= 0)
+      return { seq, outcome: 'noninteger', cycleAt: -1, maxValue };
+    if (next > MAX_VAL) {
+      seq.push(next);
+      return { seq, outcome: 'diverge', cycleAt: -1, maxValue };
+    }
+    seq.push(next);
+    if (seen.has(next)) {
+      const cycleAt = seen.get(next);
+      return { seq, outcome: next === 1 ? 'converge' : 'cycle', cycleAt, maxValue };
+    }
+    seen.set(next, seq.length - 1);
+    n = next;
+  }
+  return { seq, outcome: 'timeout', cycleAt: -1, maxValue };
+}
+
+// ── Color by log(value) ──────────────────────────────────────────────────────
+function valColor(v) {
+  const t = Math.min(1, Math.log10(Math.max(1, Math.abs(v))) / 3.5);
+  const stops = [
+    [0,   [90,  210, 120]],
+    [0.3, [180, 215,  55]],
+    [0.6, [250, 145,  25]],
+    [1.0, [235,  45,  45]],
+  ];
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const s = (t - stops[i-1][0]) / (stops[i][0] - stops[i-1][0]);
+      const c = stops[i-1][1].map((x, j) => Math.round(x + s * (stops[i][1][j] - x)));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return 'rgb(235,45,45)';
+}
+
+// ── Force-directed physics ───────────────────────────────────────────────────
+function physicsStep(nodes, edges, W, H) {
+  const vals = [...nodes.keys()];
+  const fx = {}, fy = {};
+  for (const v of vals) { fx[v] = 0; fy[v] = 0; }
+
+  // Repulsion between all node pairs
+  for (let i = 0; i < vals.length; i++) {
+    for (let j = i + 1; j < vals.length; j++) {
+      const a = nodes.get(vals[i]), b = nodes.get(vals[j]);
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy + 1;
+      const f  = 5000 / d2;
+      const d  = Math.sqrt(d2);
+      fx[vals[i]] += f * dx / d;  fy[vals[i]] += f * dy / d;
+      fx[vals[j]] -= f * dx / d;  fy[vals[j]] -= f * dy / d;
+    }
+  }
+
+  // Spring attraction along edges
+  const L0 = 85; // natural spring length
+  for (const { from, to } of edges) {
+    if (!nodes.has(from) || !nodes.has(to)) continue;
+    const nf = nodes.get(from), nt = nodes.get(to);
+    const dx = nt.x - nf.x, dy = nt.y - nf.y;
+    const d  = Math.sqrt(dx * dx + dy * dy) + 0.1;
+    const f  = 0.05 * (d - L0);
+    fx[from] += f * dx / d;  fy[from] += f * dy / d;
+    fx[to]   -= f * dx / d;  fy[to]   -= f * dy / d;
+  }
+
+  // Gentle gravity toward center
+  for (const v of vals) {
+    const n = nodes.get(v);
+    fx[v] += 0.018 * (W / 2 - n.x);
+    fy[v] += 0.018 * (H / 2 - n.y);
+  }
+
+  // Euler integration with damping
+  const damp = 0.83;
+  for (const v of vals) {
+    const n  = nodes.get(v);
+    if (n.pinned || n.dragging) {
+      n.vx = 0;
+      n.vy = 0;
+      n.x = clampNodePosition(n.x, NODE_R, W);
+      n.y = clampNodePosition(n.y, NODE_R, H);
+      continue;
+    }
+    n.vx = (n.vx + fx[v]) * damp;
+    n.vy = (n.vy + fy[v]) * damp;
+    n.x  = Math.max(NODE_R + 2, Math.min(W - NODE_R - 2, n.x + n.vx));
+    n.y  = Math.max(NODE_R + 2, Math.min(H - NODE_R - 2, n.y + n.vy));
+  }
+}
+
+// ── Canvas rendering ─────────────────────────────────────────────────────────
+function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid) {
+  if (!canvas) return;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = theme.canvasBg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  if (showGrid) {
+    ctx.strokeStyle = theme.canvasGrid;
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+
+  // Formula watermark — always visible behind the graph
+  const sign = a >= 0 ? '+' : '−';
+  const evenEquation = [
+    { text: 'f(n) = n / ', color: theme.canvasWatermark },
+    { text: String(d), color: PARAM_COLORS.d },
+  ];
+  const oddEquation = [
+    { text: 'f(n) = ', color: theme.canvasWatermark },
+    { text: String(m), color: PARAM_COLORS.m },
+    { text: 'n ', color: theme.canvasWatermark },
+    { text: sign, color: theme.canvasWatermark },
+    { text: ' ', color: theme.canvasWatermark },
+    { text: String(Math.abs(a)), color: PARAM_COLORS.a },
+  ];
+  ctx.save();
+  ctx.globalAlpha = 0.48;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  const maxFormulaWidth = Math.max(260, W - 80);
+  let formulaSize = Math.min(Math.round(W / 28), 46);
+  let annotationGap = 26;
+  while (formulaSize > 24) {
+    ctx.font = `bold ${formulaSize}px monospace`;
+    annotationGap = Math.max(24, Math.round(formulaSize * 0.72));
+    const evenWidth = getSegmentsWidth(ctx, evenEquation) + annotationGap + measureSegmentWidth(ctx, '(n even)');
+    const oddWidth = getSegmentsWidth(ctx, oddEquation) + annotationGap + measureSegmentWidth(ctx, '(n odd)');
+    if (Math.max(evenWidth, oddWidth) <= maxFormulaWidth) break;
+    formulaSize -= 2;
+  }
+  const formulaBottomPad = 12;
+  ctx.font = `bold ${formulaSize}px monospace`;
+  const formulaGap = Math.max(formulaSize + 24, Math.round(formulaSize * 1.9));
+  const annotationColor = theme.canvasAnnotation;
+  drawFormulaLine(ctx, W / 2, H - formulaBottomPad - formulaGap, evenEquation, '(n even)', annotationColor, annotationGap);
+  drawFormulaLine(ctx, W / 2, H - formulaBottomPad, oddEquation, '(n odd)', annotationColor, annotationGap);
+  ctx.restore();
+
+  // Edges with arrowheads
+  for (const { from, to } of edges) {
+    const nf = nodes.get(from), nt = nodes.get(to);
+    if (!nf || !nt) continue;
+    const dx = nt.x - nf.x, dy = nt.y - nf.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) continue;
+
+    const toR = (startNodes.has(to) ? START_R : NODE_R) + 5;
+    const ex = nt.x - (dx / dist) * toR;
+    const ey = nt.y - (dy / dist) * toR;
+
+    ctx.beginPath();
+    ctx.moveTo(nf.x, nf.y);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = theme.canvasEdge;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Arrowhead
+    const angle = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 9 * Math.cos(angle - 0.45), ey - 9 * Math.sin(angle - 0.45));
+    ctx.lineTo(ex - 9 * Math.cos(angle + 0.45), ey - 9 * Math.sin(angle + 0.45));
+    ctx.closePath();
+    ctx.fillStyle = theme.canvasEdgeHead;
+    ctx.fill();
+  }
+
+  // Nodes
+  for (const [val, pos] of nodes) {
+    const isCycle  = cycleNodes.has(val);
+    const isStart  = startNodes.has(val);
+    const isPinned = !!pos.pinned;
+    const isDragging = !!pos.dragging;
+
+    // Pop-in scale: new nodes spawn large and shrink to normal over ~1s
+    const elapsed  = (now - pos.birthTime) / 1000;
+    const popScale = 1 + 2.2 * Math.exp(-elapsed * 2.8);
+    const baseR    = isStart ? START_R : NODE_R;
+    const r        = baseR * popScale;
+
+    // Glow for cycle nodes (and starting nodes)
+    if (isCycle || isStart) {
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r + (isStart ? 8 : 6), 0, Math.PI * 2);
+      ctx.fillStyle = isStart
+        ? 'rgba(120, 180, 255, 0.15)'
+        : 'rgba(255, 215, 50, 0.18)';
+      ctx.fill();
+    }
+
+    // (no hover highlight — clicking shows a tooltip instead)
+
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = valColor(val);
+    ctx.fill();
+    ctx.strokeStyle = isDragging ? 'rgba(255,255,255,0.98)'
+            : isPinned  ? 'rgba(170,230,255,0.98)'
+            : isCycle   ? 'rgba(255,215,50,0.9)'
+            : isStart   ? 'rgba(140,200,255,0.9)'
+            : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth   = isDragging ? 3.5 : (isPinned || isCycle || isStart) ? 2.5 : 1;
+    ctx.stroke();
+
+    // Label — scale font with node size
+    const label = val > 9999 ? String(val).slice(0, 4) + '…' : String(val);
+    const fs    = Math.max(8, Math.min(14, Math.round(r * 0.75)));
+    ctx.fillStyle    = 'white';
+    ctx.font         = `bold ${fs}px monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, pos.x, pos.y);
+  }
+}
+
+// ── Outcome badge ────────────────────────────────────────────────────────────
+const OUTCOME_COLOR = {
+  converge:   '#55dd77',
+  cycle:      '#ffcc33',
+  diverge:    '#ff7755',
+  noninteger: '#9999aa',
+  timeout:    '#9999aa',
+};
+const OUTCOME_LABEL = {
+  converge:   'converges → 1',
+  cycle:      'enters cycle',
+  diverge:    'diverges',
+  noninteger: 'non-integer',
+  timeout:    'timed out',
+};
+
+// ── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const GRID_BLOCK_SIZE = 100;
+
+  // Read URL params: ?m=5&a=1&d=2
+  const sp = new URLSearchParams(window.location.search);
+  const urlM = sp.get('m'), urlA = sp.get('a'), urlD = sp.get('d');
+
+  const seed   = parseInt(sp.get('seed') ?? '27');
+  const urlKey = sp.get('key') ?? '';
+
+  const [m, setM]           = useState(parseInt(urlM ?? '3'));
+  const [a, setA]           = useState(parseInt(urlA ?? '-1'));
+  const [d, setD]           = useState(parseInt(urlD ?? '2'));
+  const [apiKey, setApiKey] = useState(() => {
+    // Try URL first, then the new generic key storage, then the legacy OpenRouter storage.
+    return urlKey || localStorage.getItem(CHAT_KEY_STORAGE) || localStorage.getItem('openrouter_key') || '';
+  });
+  const [showKeyInput, setShowKeyInput] = useState(
+    !urlKey && !localStorage.getItem(CHAT_KEY_STORAGE) && !localStorage.getItem('openrouter_key')
+  );
+  const [inputVal, setInputVal] = useState('');
+  const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || '');
+  const [showGhInput, setShowGhInput] = useState(false);
+  const [ghSaveStatus, setGhSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [log, setLog]       = useState([]);
+
+  // Physics state lives in refs — no React re-render needed each frame
+  const nodesRef  = useRef(new Map());
+  const edgesRef  = useRef([]);
+  const cyclesRef = useRef(new Set());
+  const startNodesRef = useRef(new Set());
+  const canvasRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const paramsRef = useRef({ m, a, d });
+  const themeRef = useRef(THEME_PRESETS.dark);
+  const showGridRef = useRef(true);
+  const rafRef    = useRef(null);
+  const hoveredNodeRef = useRef(null);
+
+  const [overflow, setOverflow] = useState(null);
+  const [showDataTable, setShowDataTable] = useState(false);
+  const [visitedNums, setVisitedNums] = useState(new Set());
+  const [inputWarning, setInputWarning] = useState('');
+  const [savedCases, setSavedCases] = useState([]);
+  const [gridStart, setGridStart] = useState(1);
+  const [gridCount, setGridCount] = useState(4);
+  const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [useLightTheme, setUseLightTheme] = useState(false);
+  const [language, setLanguage] = useState(() => localStorage.getItem('orbit_language') || 'en');
+
+  // ── Chat state ───────────────────────────────────────────────────────────────
+  const t = (key, values) => translate(language, key, values);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', content: translate(language, 'chatGreeting') }
+  ]);
+  const [chatInput,   setChatInput]   = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('orbit_language', language);
+  }, [language]);
+
+  useEffect(() => {
+    setInputWarning(prev => prev ? getStartLimitWarning(inputVal, language) : prev);
+  }, [language]);
+
+  useEffect(() => {
+    setChatMessages(prev => {
+      if (prev.length !== 1 || prev[0].role !== 'assistant') return prev;
+      return [{ role: 'assistant', content: translate(language, 'chatGreeting') }];
+    });
+  }, [language]);
+
+  function saveApiKey(key) {
+    const trimmed = key.trim();
+    setApiKey(trimmed);
+    if (trimmed) {
+      localStorage.setItem(CHAT_KEY_STORAGE, trimmed);
+      if (detectChatProvider(trimmed) === 'openrouter') {
+        localStorage.setItem('openrouter_key', trimmed);
+      } else {
+        localStorage.removeItem('openrouter_key');
+      }
+      setShowKeyInput(false);
+    }
+  }
+
+  function clearApiKey() {
+    setApiKey('');
+    localStorage.removeItem(CHAT_KEY_STORAGE);
+    localStorage.removeItem('openrouter_key');
+    setShowKeyInput(true);
+  }
+
+  async function saveToGitHub(filename, content) {
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(content)));
+      const res = await fetch(
+        `https://api.github.com/repos/OhioMathTeacher/orbit-explorer/contents/Orbit%20Data/${encodeURIComponent(filename)}`,
+        {
+          method: 'PUT',
+          headers: { 'Authorization': `token ${ghToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Data submission ${filename}`, content: encoded }),
+        }
+      );
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async function downloadChatTranscript() {
+    const now = new Date();
+    const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+    const dateStr = now.toISOString().substring(0, 10);
+    
+    // Create formatted transcript
+    let transcript = `========================================\n`;
+    transcript += `${t('transcriptTitle')}\n`;
+    transcript += `========================================\n\n`;
+    transcript += `${t('transcriptDate')}: ${timestamp}\n`;
+    transcript += `${t('transcriptParameters')}: m=${m}, b=${a}, d=${d}\n`;
+    transcript += `${t('transcriptNumbersExplored')}: ${log.length}\n\n`;
+    
+    if (log.length > 0) {
+      transcript += `${t('transcriptSummary')}:\n`;
+      transcript += `${'─'.repeat(40)}\n`;
+      log.slice().reverse().forEach(entry => {
+        transcript += `  ${entry.start} -> ${t(`outcomes.${entry.outcome}`)} (${entry.steps} ${t('steps').toLowerCase()})\n`;
+      });
+      transcript += `\n`;
+    }
+    
+    transcript += `${t('transcriptConversation')}:\n`;
+    transcript += `${'─'.repeat(40)}\n\n`;
+    
+    chatMessages.forEach((msg, i) => {
+      const speaker = msg.role === 'user' ? 'STUDENT' : 'ZhengGPT';
+      transcript += `[${speaker}]\n${msg.content}\n\n`;
+    });
+    
+    transcript += `${'─'.repeat(40)}\n`;
+    transcript += `${t('transcriptEnd')}\n`;
+    
+    // Create download
+    const blob = new Blob([transcript], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orbit-explorer-chat-${dateStr}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Save to GitHub if token is configured
+    if (ghToken) {
+      const filename = `orbit-explorer-${now.toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+      setGhSaveStatus('saving');
+      const ok = await saveToGitHub(filename, transcript);
+      setGhSaveStatus(ok ? 'saved' : 'error');
+      setTimeout(() => setGhSaveStatus(null), 4000);
+    }
+  }
+
+  async function sendChat() {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    if (!apiKey) {
+      setShowKeyInput(true);
+      return;
+    }
+    const userMsg = { role: 'user', content: text };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setChatLoading(true);
+    try {
+      const request = getChatRequestConfig(apiKey, newMessages, language);
+      const res = await fetch(request.endpoint, {
+        method: 'POST',
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+      });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        throw new Error(data?.error?.message || data?.message || `Chat request failed (${res.status})`);
+      }
+      const reply = data?.choices?.[0]?.message?.content ?? 'Something went wrong. Try again.';
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch (e) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: getChatErrorMessage(e, language) }]);
+    }
+    setChatLoading(false);
+  }
+
+
+  useEffect(() => { paramsRef.current = { m, a, d }; }, [m, a, d]);
+  useEffect(() => { themeRef.current = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark; }, [useLightTheme]);
+  useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
+
+  // Load initial example sequence on mount
+  useEffect(() => {
+    // Small delay so canvas has sized itself first
+    const t = setTimeout(() => {
+      // Load a simple example: 5, 7, 13 - students can see convergence patterns
+      [5, 7, 13].forEach((n, i) => {
+        setTimeout(() => addNumberVal(n), i * 400);
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resize canvas to fill its container
+  useEffect(() => {
+    function resize() {
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      cvs.width  = cvs.offsetWidth;
+      cvs.height = cvs.offsetHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  // Animation loop
+  useEffect(() => {
+    let alive = true;
+    function tick() {
+      if (!alive) return;
+      const cvs = canvasRef.current;
+      if (cvs && cvs.width > 0) {
+        physicsStep(nodesRef.current, edgesRef.current, cvs.width, cvs.height);
+        drawGraph(cvs, nodesRef.current, edgesRef.current,
+            cyclesRef.current, startNodesRef.current, Date.now(),
+            paramsRef.current.m, paramsRef.current.a, paramsRef.current.d,
+                  hoveredNodeRef.current, themeRef.current, showGridRef.current);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  function reset() {
+    nodesRef.current      = new Map();
+    edgesRef.current      = [];
+    cyclesRef.current     = new Set();
+    startNodesRef.current = new Set();
+    setLog([]);
+    setVisitedNums(new Set());
+  }
+
+  function alignGridStart(value) {
+    const safeValue = Math.max(1, parseInt(value || 1, 10) || 1);
+    return Math.floor((safeValue - 1) / GRID_BLOCK_SIZE) * GRID_BLOCK_SIZE + 1;
+  }
+
+  function updateGridStart(value) {
+    setGridStart(alignGridStart(value));
+  }
+
+  function updateGridCount(value) {
+    const next = parseInt(value, 10);
+    if (Number.isNaN(next)) return;
+    setGridCount(Math.max(1, Math.min(20, next)));
+  }
+
+  function focusGridOnValue(value) {
+    const rangeEnd = gridStart + gridCount * GRID_BLOCK_SIZE - 1;
+    if (value < gridStart || value > rangeEnd) {
+      setGridStart(alignGridStart(value));
+    }
+  }
+
+  function changeParam(setter, val) {
+    setter(val);
+    reset();
+  }
+
+  function saveCase(entry) {
+    const key = `${entry.m}:${entry.a}:${entry.d}:${entry.start}:${entry.steps}:${entry.outcome}:${entry.maxValue}`;
+    setSavedCases(prev => {
+      if (prev.some(item => item.key === key)) return prev;
+      return [{ ...entry, key }, ...prev];
+    });
+  }
+
+  function isCaseSaved(entry) {
+    const key = `${entry.m}:${entry.a}:${entry.d}:${entry.start}:${entry.steps}:${entry.outcome}:${entry.maxValue}`;
+    return savedCases.some(item => item.key === key);
+  }
+
+  function removeSavedCase(key) {
+    setSavedCases(prev => prev.filter(entry => entry.key !== key));
+  }
+
+  function resetLayout() {
+    const cvs = canvasRef.current;
+    const W = cvs?.width ?? 900;
+    const H = cvs?.height ?? 560;
+    for (const node of nodesRef.current.values()) {
+      node.pinned = false;
+      node.dragging = false;
+      node.vx = (Math.random() - 0.5) * 2;
+      node.vy = (Math.random() - 0.5) * 2;
+      node.x = clampNodePosition(node.x, NODE_R, W);
+      node.y = clampNodePosition(node.y, NODE_R, H);
+    }
+    dragStateRef.current = null;
+    setIsDraggingNode(false);
+  }
+
+  function getCanvasPoint(event) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  }
+
+  function handleCanvasPointerDown(event) {
+    const point = getCanvasPoint(event);
+    if (!point) return;
+    const hit = findNodeAt(nodesRef.current, startNodesRef.current, point.x, point.y, Date.now());
+    if (!hit) return;
+
+    const { value, position, radius } = hit;
+    position.dragging = true;
+    position.pinned = true;
+    position.vx = 0;
+    position.vy = 0;
+    dragStateRef.current = {
+      value,
+      pointerId: event.pointerId,
+      offsetX: point.x - position.x,
+      offsetY: point.y - position.y,
+      radius,
+    };
+    setIsDraggingNode(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleCanvasPointerMove(event) {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = getCanvasPoint(event);
+    const canvas = canvasRef.current;
+    const position = nodesRef.current.get(drag.value);
+    if (!point || !canvas || !position) return;
+
+    position.x = clampNodePosition(point.x - drag.offsetX, NODE_R, canvas.width);
+    position.y = clampNodePosition(point.y - drag.offsetY, NODE_R, canvas.height);
+    position.vx = 0;
+    position.vy = 0;
+  }
+
+  function releaseDraggedNode(pointerId) {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    const position = nodesRef.current.get(drag.value);
+    if (position) {
+      position.dragging = false;
+      position.pinned = true;
+      position.vx = 0;
+      position.vy = 0;
+    }
+    dragStateRef.current = null;
+    setIsDraggingNode(false);
+  }
+
+  function handleCanvasPointerUp(event) {
+    releaseDraggedNode(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleCanvasPointerCancel(event) {
+    releaseDraggedNode(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function addNumberVal(val) {
+    if (isNaN(val) || val <= 0 || val > MAX_START) return;
+    focusGridOnValue(val);
+    const { m, a, d } = paramsRef.current;
+    const { seq, outcome, cycleAt, maxValue } = computeSeq(val, m, a, d);
+    const limited = seq.slice(0, MAX_NODES);
+
+    const cvs = canvasRef.current;
+    const W = cvs?.width  ?? 900;
+    const H = cvs?.height ?? 560;
+
+    // Mark the starting value as an anchor node
+    startNodesRef.current.add(val);
+
+    // Add new nodes with random starting positions near center
+    const now = Date.now();
+    for (const v of limited) {
+      if (!nodesRef.current.has(v)) {
+        nodesRef.current.set(v, {
+          x:  W / 2 + (Math.random() - 0.5) * 250,
+          y:  H / 2 + (Math.random() - 0.5) * 250,
+          vx: (Math.random() - 0.5) * 3,
+          vy: (Math.random() - 0.5) * 3,
+          birthTime: now,
+          pinned: false,
+          dragging: false,
+        });
+      }
+    }
+
+    // Add edges (avoid duplicates)
+    const edgeSet = new Set(edgesRef.current.map(e => `${e.from}:${e.to}`));
+    for (let i = 0; i < limited.length - 1; i++) {
+      const key = `${limited[i]}:${limited[i + 1]}`;
+      if (!edgeSet.has(key)) {
+        edgesRef.current.push({ from: limited[i], to: limited[i + 1] });
+        edgeSet.add(key);
+      }
+    }
+
+    // Mark cycle nodes with yellow glow
+    if ((outcome === 'cycle' || outcome === 'converge') && cycleAt >= 0) {
+      for (let i = cycleAt; i < seq.length; i++) {
+        cyclesRef.current.add(seq[i]);
+      }
+    }
+
+    if (outcome === 'diverge') {
+      setOverflow({ start: val, steps: seq.length - 1, maxValue });
+    }
+
+    setLog(prev =>
+      [{ start: val, outcome, steps: seq.length - 1, maxValue, m, a, d }, ...prev].slice(0, 20)
+    );
+    setVisitedNums(prev => {
+      const next = new Set(prev);
+      for (const v of seq) {
+        if (Number.isSafeInteger(v) && v >= 1 && v <= MAX_VAL) next.add(v);
+      }
+      return next;
+    });
+  }
+
+  function addNumber() {
+    const parsed = parseSingleStartInput(inputVal);
+    if (parsed.kind !== 'ok') {
+      setInputWarning(getStartLimitWarning(inputVal, language) || t('startLimitInvalid'));
+      return;
+    }
+    const val = parsed.value;
+    setInputWarning('');
+    setInputVal('');
+    addNumberVal(val);
+  }
+
+  function handleInputChange(e) {
+    const nextValue = e.target.value;
+    setInputVal(nextValue);
+    setInputWarning(getStartLimitWarning(nextValue, language));
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const sign    = a >= 0 ? '+' : '−';
+  const uiTheme = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark;
+  const valueLimitTitle = t('valueLimitReached');
+  const valueLimitLines = valueLimitTitle.includes(' ') ? (() => {
+    const words = valueLimitTitle.split(' ');
+    return [words.slice(0, -1).join(' '), words.slice(-1).join(' ')];
+  })() : [valueLimitTitle];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: uiTheme.pageBg, color: uiTheme.textPrimary }}>
+
+      {/* ── Top bar ── */}
+      <div style={{
+        background: uiTheme.topBarBg, padding: '8px 14px',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
+        borderBottom: `1px solid ${uiTheme.border}`, flexShrink: 0,
+      }}>
+        <span style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 15, whiteSpace: 'nowrap' }}>
+          {t('appName')}
+        </span>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: uiTheme.textSecondary, fontSize: 12, whiteSpace: 'nowrap' }}>
+          <span>{t('language')}</span>
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            style={{
+              background: uiTheme.surfaceBg,
+              border: `1px solid ${uiTheme.borderStrong}`,
+              color: uiTheme.textPrimary,
+              borderRadius: 4,
+              padding: '4px 8px',
+              fontSize: 12,
+            }}>
+            {LANGUAGES.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <span style={{ color: uiTheme.textSecondary, fontSize: 13, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+          <span style={{ color: uiTheme.textPrimary }}>f(n) = n/</span>
+          <span style={{ color: PARAM_COLORS.d }}>{d}</span>
+          <span style={{ color: uiTheme.textPrimary }}> (even)   |   </span>
+          <span style={{ color: PARAM_COLORS.m }}>{m}</span>
+          <span style={{ color: uiTheme.textPrimary }}>n {sign} </span>
+          <span style={{ color: PARAM_COLORS.a }}>{Math.abs(a)}</span>
+          <span style={{ color: uiTheme.textPrimary }}> (odd)</span>
+        </span>
+
+        {/* Parameter sliders */}
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          {[
+            ['m', 'm', PARAM_COLORS.m, m, v => changeParam(setM, v), 1, 9],
+            ['a', 'b', PARAM_COLORS.a, a, v => changeParam(setA, v), -9, 9],
+            ['d', 'd', PARAM_COLORS.d, d, v => changeParam(setD, v), 2, 9],
+          ].map(([key, label, color, val, setter, min, max]) => (
+            <label key={label} style={{ fontSize: 13, display: 'flex', gap: 5, alignItems: 'center' }}>
+              <span style={{ color, minWidth: 18, fontWeight: 'bold' }}>{label} =</span>
+              <input type="range" min={min} max={max} value={val}
+                onChange={e => setter(parseInt(e.target.value))}
+                style={{ width: 72, accentColor: color }} />
+              <span style={{ color, minWidth: 22, fontWeight: 'bold' }}>{val}</span>
+            </label>
+          ))}
+        </div>
+
+        {/* Add number input */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="text" inputMode="numeric" value={inputVal}
+            placeholder={t('singleStartValue')}
+            onChange={handleInputChange}
+            onKeyDown={e => e.key === 'Enter' && addNumber()}
+            style={{
+              width: 150, background: '#1a2d50', border: '1px solid #3355aa',
+              color: 'white', padding: '4px 8px', borderRadius: 4, fontSize: 12,
+            }}
+          />
+          <button onClick={addNumber} style={{
+            background: '#1e44aa', border: 'none', color: 'white',
+            padding: '4px 11px', borderRadius: 4, fontSize: 12,
+          }}>{t('add')}</button>
+          <button onClick={reset} style={{
+            background: '#3d1020', border: 'none', color: '#ffaaaa',
+            padding: '4px 12px', borderRadius: 4, fontSize: 12,
+          }}>{t('reset')}</button>
+          <button onClick={() => setShowDataTable(!showDataTable)} style={{
+            background: showDataTable ? '#2a4455' : '#1a2d50', border: '1px solid #3355aa',
+            color: 'white', padding: '4px 11px', borderRadius: 4, fontSize: 12,
+          }}>{`📊 ${t('cases')}`}</button>
+            <button
+              type="button"
+              disabled={!log[0] || isCaseSaved(log[0])}
+              onClick={() => log[0] && saveCase(log[0])}
+              style={{
+                background: !log[0] ? '#253247' : isCaseSaved(log[0]) ? '#254231' : 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)',
+                border: 'none',
+                color: !log[0] ? '#7f93b0' : 'white',
+                padding: '4px 12px',
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 'bold',
+                cursor: !log[0] || isCaseSaved(log[0]) ? 'default' : 'pointer',
+                boxShadow: !log[0] || isCaseSaved(log[0]) ? 'none' : '0 4px 10px rgba(73, 169, 95, 0.35)',
+              }}>
+              {!log[0] ? t('saveLatestCaseDisabled') : isCaseSaved(log[0]) ? t('latestCaseSaved') : t('saveLatestCase')}
+            </button>
+            <button
+              type="button"
+              title={t('saveCaseHelp')}
+              aria-label={t('saveCaseHelp')}
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                border: '1px solid #44608a',
+                background: '#162040',
+                color: '#9fc3f0',
+                fontSize: 12,
+                fontWeight: 'bold',
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'help',
+              }}>
+              ?
+            </button>
+          </div>
+          {inputWarning && (
+            <div style={{ color: '#ffb366', fontSize: 11, lineHeight: 1.35, maxWidth: 430 }}>
+              {inputWarning}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── INTEGER OVERFLOW overlay ── */}
+      {overflow && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 20,
+          background: 'rgba(0,0,0,0.93)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ fontSize: 'clamp(36px,7vw,88px)', fontWeight: 'bold', color: 'white', letterSpacing: 4, textAlign: 'center', lineHeight: 1.1 }}>
+            {valueLimitLines[0]}{valueLimitLines[1] ? <><br />{valueLimitLines[1]}</> : null}
+          </div>
+          <div style={{ color: '#ff8866', fontSize: 16, marginTop: 20, textAlign: 'center' }}>
+            {t('startingValueExceeded', {
+              start: formatValue(overflow.start),
+              max: formatValue(MAX_VAL),
+              steps: overflow.steps,
+            }).split(String(formatValue(overflow.start))).reduce((acc, part, idx, arr) => {
+              if (idx === arr.length - 1) return [...acc, part];
+              return [...acc, part, <strong key={idx}>{formatValue(overflow.start)}</strong>];
+            }, [])}
+          </div>
+          <div style={{ color: '#aabbd0', fontSize: 13, marginTop: 10, textAlign: 'center', maxWidth: 560 }}>
+            {t('valueLimitExplanation', { maxValue: formatValue(overflow.maxValue) }).split(String(formatValue(overflow.maxValue))).reduce((acc, part, idx, arr) => {
+              if (idx === arr.length - 1) return [...acc, part];
+              return [...acc, part, <strong key={idx}>{formatValue(overflow.maxValue)}</strong>];
+            }, [])}
+          </div>
+          <button onClick={() => setOverflow(null)} style={{
+            marginTop: 36, background: 'transparent',
+            border: '1px solid #445566', color: '#aabbcc',
+            padding: '8px 28px', borderRadius: 4, fontSize: 14, letterSpacing: 2,
+          }}>
+            {t('continue')}
+          </button>
+        </div>
+      )}
+
+      {/* ── Canvas + log panel ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+
+        {/* Main canvas */}
+        <canvas ref={canvasRef}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerUp}
+          onPointerCancel={handleCanvasPointerCancel}
+          style={{ flex: 1, display: 'block', minWidth: 0, cursor: isDraggingNode ? 'grabbing' : 'grab' }} />
+
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 5,
+          display: 'flex',
+          gap: 10,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <button
+            type="button"
+            onClick={resetLayout}
+            style={{
+              background: uiTheme.overlayBg,
+              border: `1px solid ${uiTheme.borderStrong}`,
+              color: uiTheme.textPrimary,
+              padding: '6px 12px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 'bold',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            }}>
+            {t('resetLayout')}
+          </button>
+          <button
+            type="button"
+            title={t('dragHelp')}
+            aria-label={t('dragHelp')}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              border: `1px solid ${uiTheme.borderStrong}`,
+              background: uiTheme.overlayBgSoft,
+              color: uiTheme.textSecondary,
+              fontSize: 12,
+              fontWeight: 'bold',
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'help',
+            }}>
+            ?
+          </button>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: uiTheme.overlayBgSoft,
+            border: `1px solid ${uiTheme.border}`,
+            color: uiTheme.textPrimary,
+            borderRadius: 6,
+            padding: '5px 9px',
+            fontSize: 11,
+          }}>
+            <input
+              type="checkbox"
+              checked={showGrid}
+              onChange={e => setShowGrid(e.target.checked)}
+            />
+            {t('grid')}
+          </label>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: uiTheme.overlayBgSoft,
+            border: `1px solid ${uiTheme.border}`,
+            color: uiTheme.textPrimary,
+            borderRadius: 6,
+            padding: '5px 9px',
+            fontSize: 11,
+          }}>
+            <input
+              type="checkbox"
+              checked={useLightTheme}
+              onChange={e => setUseLightTheme(e.target.checked)}
+            />
+            {t('lightTheme')}
+          </label>
+        </div>
+
+        {/* Data Table Overlay */}
+        {showDataTable && (
+          <div style={{
+            position: 'absolute', top: 60, left: 20, right: 320,
+            maxHeight: 'calc(100% - 80px)', overflowY: 'auto',
+            background: uiTheme.overlayBg, border: `2px solid ${uiTheme.borderStrong}`,
+            borderRadius: 8, padding: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 14 }}>{t('cases')}</span>
+              <button onClick={() => setShowDataTable(false)} style={{
+                background: 'transparent', border: `1px solid ${uiTheme.borderStrong}`,
+                color: uiTheme.textMuted, borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer'
+              }}>{t('close')}</button>
+            </div>
+            <div style={{ color: uiTheme.textMuted, fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>
+              {t('casesExplanation')}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>{t('recentResults')}</div>
+              <table style={{ width: '100%', fontSize: 12, color: uiTheme.textPrimary, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${uiTheme.borderStrong}` }}>
+                    <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('start')}</th>
+                    <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('outcome')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('steps')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('peak')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('keep')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {log.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '8px 6px', color: uiTheme.textMuted }}>{t('noResultsYet')}</td>
+                    </tr>
+                  ) : log.map((entry, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${uiTheme.border}` }}>
+                      <td style={{ padding: '6px', fontWeight: 'bold' }}>{formatValue(entry.start)}</td>
+                      <td style={{ padding: '6px', color: OUTCOME_COLOR[entry.outcome] }}>
+                        {t(`outcomes.${entry.outcome}`)}
+                      </td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{entry.steps}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{formatValue(entry.maxValue)}</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => saveCase(entry)}
+                          disabled={isCaseSaved(entry)}
+                          style={{
+                            background: isCaseSaved(entry) ? '#253247' : '#234f2d',
+                            border: `1px solid ${isCaseSaved(entry) ? '#445566' : '#2f7a44'}`,
+                            color: isCaseSaved(entry) ? '#9ab0c8' : '#dff5e5',
+                            borderRadius: 4,
+                            padding: '3px 8px',
+                            fontSize: 10,
+                            cursor: isCaseSaved(entry) ? 'default' : 'pointer',
+                          }}>
+                          {isCaseSaved(entry) ? t('saved') : t('save')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 12 }}>{t('savedCases')}</div>
+                {savedCases.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSavedCases([])}
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${uiTheme.border}`,
+                      color: uiTheme.textMuted,
+                      borderRadius: 4,
+                      padding: '2px 8px',
+                      fontSize: 10,
+                    }}>
+                    {t('clearSaved')}
+                  </button>
+                )}
+              </div>
+              <table style={{ width: '100%', fontSize: 12, color: uiTheme.textPrimary, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${uiTheme.borderStrong}` }}>
+                    <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.m }}>m</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.a }}>b</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.d }}>d</th>
+                    <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('start')}</th>
+                    <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('outcome')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('steps')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('peak')}</th>
+                    <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('remove')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {savedCases.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ padding: '8px 6px', color: uiTheme.textMuted }}>{t('noSavedCasesYet')}</td>
+                    </tr>
+                  ) : savedCases.map(entry => (
+                    <tr key={entry.key} style={{ borderBottom: `1px solid ${uiTheme.border}` }}>
+                      <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.m }}>{entry.m}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.a }}>{entry.a}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.d }}>{entry.d}</td>
+                      <td style={{ padding: '6px', fontWeight: 'bold' }}>{formatValue(entry.start)}</td>
+                      <td style={{ padding: '6px', color: OUTCOME_COLOR[entry.outcome] }}>{t(`outcomes.${entry.outcome}`)}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{entry.steps}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{formatValue(entry.maxValue)}</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          onClick={() => removeSavedCase(entry.key)}
+                          style={{
+                            background: 'transparent',
+                            border: `1px solid ${uiTheme.border}`,
+                            color: uiTheme.textMuted,
+                            borderRadius: 4,
+                            padding: '3px 8px',
+                            fontSize: 10,
+                          }}>
+                          {t('remove')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── ZhengGPT Chat Panel ── */}
+        <div style={{
+          width: 300, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
+          display: 'flex', flexDirection: 'column', flexShrink: 0, order: 2,
+        }}>
+          {apiKey ? detectChatProvider(apiKey) : null}
+          <div style={{ padding: '8px 12px', borderBottom: `1px solid ${uiTheme.border}`,
+            color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>ZhengGPT {!apiKey && <span style={{ color: '#ff7755', fontSize: 11 }}> - {t('noKey')}</span>}</span>
+            {apiKey && (
+              <button onClick={clearApiKey} style={{
+                background: 'transparent', border: '1px solid #3a4a66',
+                color: '#7799bb', fontSize: 10, padding: '2px 6px', borderRadius: 3, cursor: 'pointer'
+              }}>{t('changeKey')}</button>
+            )}
+          </div>
+
+          {/* API Key Input (shown when no key is set) */}
+          {showKeyInput && (
+            <div style={{ padding: '10px', background: uiTheme.panelBgAlt, borderBottom: `1px solid ${uiTheme.border}` }}>
+              <div style={{ color: uiTheme.textSecondary, fontSize: 11, marginBottom: 6 }}>{t('enterApiKey')}</div>
+              <input
+                type="password"
+                placeholder="sk-or-v1-... or sk-..."
+                onKeyDown={e => e.key === 'Enter' && saveApiKey(e.target.value)}
+                style={{
+                  width: '100%', background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary, borderRadius: 4, padding: '5px 8px', fontSize: 11,
+                  fontFamily: 'monospace'
+                }}
+              />
+              <button onClick={e => {
+                const input = e.target.previousElementSibling;
+                saveApiKey(input.value);
+              }} style={{
+                marginTop: 6, background: '#1e44aa', border: 'none',
+                color: 'white', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', width: '100%'
+              }}>{t('saveKey')}</button>
+              <div style={{ color: uiTheme.textMuted, fontSize: 10, marginTop: 6, lineHeight: 1.3 }}>
+                {t('getApiKeysAt')} <a href="https://openrouter.ai" target="_blank" rel="noreferrer" style={{ color: '#5588dd' }}>openrouter.ai</a> / <a href="https://platform.deepseek.com" target="_blank" rel="noreferrer" style={{ color: '#5588dd' }}>platform.deepseek.com</a>
+              </div>
+            </div>
+          )}
+
+          {apiKey && (
+            <div style={{ padding: '6px 10px', borderBottom: `1px solid ${uiTheme.border}`, background: uiTheme.panelBgAlt, color: uiTheme.textMuted, fontSize: 10 }}>
+              {t('keyDetected', { provider: detectChatProvider(apiKey) === 'openrouter' ? 'OpenRouter' : 'DeepSeek' })}
+            </div>
+          )}
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', fontSize: 12, lineHeight: 1.5 }}>
+            {chatMessages.map((msg, i) => (
+              <div key={i} style={{
+                marginBottom: 10,
+                textAlign: msg.role === 'user' ? 'right' : 'left',
+              }}>
+                <span style={{
+                  display: 'inline-block', maxWidth: '85%',
+                  background: msg.role === 'user' ? '#1e44aa' : uiTheme.surfaceBg,
+                  color: msg.role === 'user' ? '#ddeeff' : uiTheme.textSecondary,
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  padding: '6px 10px',
+                }}>
+                  {msg.content}
+                </span>
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ color: uiTheme.textMuted, fontStyle: 'italic', fontSize: 11 }}>{t('zhengThinking')}</div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Download Button - Prominent */}
+          {chatMessages.length > 1 && (
+            <div style={{ padding: '10px', borderTop: `1px solid ${uiTheme.border}`, background: uiTheme.panelBgAlt }}>
+              <button onClick={downloadChatTranscript} style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+                border: 'none',
+                color: 'white',
+                borderRadius: 6,
+                padding: '12px 16px',
+                fontSize: 15,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(255, 107, 53, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseEnter={e => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 6px 16px rgba(255, 107, 53, 0.6)';
+              }}
+              onMouseLeave={e => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 12px rgba(255, 107, 53, 0.4)';
+              }}>
+                <span style={{ fontSize: 20 }}>💾</span>
+                <span>{t('downloadChat')}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Input */}
+          <div style={{ padding: '8px', borderTop: chatMessages.length > 1 ? 'none' : `1px solid ${uiTheme.border}`, display: 'flex', gap: 6 }}>
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChat()}
+              placeholder={t('askZheng')}
+              style={{
+                flex: 1, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textPrimary, borderRadius: 4, padding: '5px 8px', fontSize: 12,
+              }}
+            />
+            <button onClick={sendChat} disabled={chatLoading} style={{
+              background: chatLoading ? '#112' : '#1e44aa', border: 'none',
+              color: 'white', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
+            }}>{t('send')}</button>
+          </div>
+        </div>
+
+        {/* ── Scoreboard ── */}
+        <div style={{
+          width: 290, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
+          display: 'flex', flexDirection: 'column', flexShrink: 0, order: 1,
+          overflowY: 'auto', padding: '8px 10px',
+        }}>
+          <div style={{
+            color: uiTheme.titleText, fontWeight: 'bold', fontSize: 12,
+            textAlign: 'center', letterSpacing: 2, marginBottom: 8,
+          }}>{t('dataReferenceGrids')}</div>
+
+          <div style={{
+            marginBottom: 12,
+            padding: '8px',
+            background: uiTheme.panelBgAlt,
+            border: `1px solid ${uiTheme.border}`,
+            borderRadius: 6,
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>
+              {t('gridWindow')}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 76px', gap: 6, marginBottom: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: uiTheme.textSecondary, fontSize: 10 }}>{t('startAt')}</span>
+                <div style={{
+                  width: '100%',
+                  background: uiTheme.surfaceBgMuted,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  letterSpacing: 0.5,
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}>
+                  {formatValue(gridStart)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: uiTheme.textSecondary, fontSize: 10 }}>{t('blocks')}</span>
+                <div style={{
+                  width: '100%',
+                  background: uiTheme.surfaceBgMuted,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}>
+                  {gridCount}
+                </div>
+              </div>
+            </div>
+            <div style={{ color: uiTheme.textMuted, fontSize: 10, marginBottom: 6 }}>
+              {t('usePreviousNext')}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => updateGridStart(Math.max(1, gridStart - gridCount * GRID_BLOCK_SIZE))}
+                style={{
+                  flex: 1,
+                  background: uiTheme.surfaceBg,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '5px 6px',
+                  fontSize: 10,
+                }}>
+                {t('previous')} {gridCount * GRID_BLOCK_SIZE}
+              </button>
+              <button
+                type="button"
+                onClick={() => updateGridStart(gridStart + gridCount * GRID_BLOCK_SIZE)}
+                style={{
+                  flex: 1,
+                  background: uiTheme.surfaceBg,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '5px 6px',
+                  fontSize: 10,
+                }}>
+                {t('next')} {gridCount * GRID_BLOCK_SIZE}
+              </button>
+            </div>
+          </div>
+
+          <div style={{
+            marginBottom: 12,
+            padding: '8px',
+            background: uiTheme.panelBgAlt,
+            border: `1px solid ${uiTheme.border}`,
+            borderRadius: 6,
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 11, marginBottom: 6, letterSpacing: 1 }}>
+              {t('recentStarts')}
+            </div>
+            {log.length === 0 ? (
+              <div style={{ color: uiTheme.textMuted, fontSize: 11, lineHeight: 1.4 }}>
+                {t('largeValuesAppear')}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {log.slice(0, 8).map((entry, i) => (
+                  <button
+                    key={`${entry.start}-${entry.steps}-${i}`}
+                    type="button"
+                    onClick={() => {
+                      updateGridStart(entry.start);
+                      addNumberVal(entry.start);
+                    }}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr auto',
+                      gap: 6,
+                      alignItems: 'center',
+                      width: '100%',
+                      background: uiTheme.surfaceBg,
+                      border: `1px solid ${uiTheme.border}`,
+                      color: uiTheme.textPrimary,
+                      borderRadius: 4,
+                      padding: '5px 7px',
+                      fontSize: 11,
+                      textAlign: 'left',
+                    }}>
+                    <span>{formatValue(entry.start)}</span>
+                    <span style={{ color: OUTCOME_COLOR[entry.outcome], fontSize: 10 }}>{t(`outcomes.${entry.outcome}`)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {Array.from({ length: gridCount }, (_, block) => {
+            const blockStart = gridStart + block * GRID_BLOCK_SIZE;
+            const blockEnd = blockStart + GRID_BLOCK_SIZE - 1;
+            return (
+            <div key={blockStart} style={{ marginBottom: 10 }}>
+              <div style={{ color: '#99bbdd', fontSize: 11, textAlign: 'center', marginBottom: 4 }}>
+                {formatValue(blockStart)} - {formatValue(blockEnd)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
+                {Array.from({ length: GRID_BLOCK_SIZE }, (_, i) => blockStart + i).map(n => {
+                  const hit = visitedNums.has(n);
+                  return (
+                    <button key={n} type="button" style={{
+                      aspectRatio: '1',
+                      background: hit ? valColor(n) : '#182840',
+                      border: hit ? '1px solid rgba(255,255,255,0.2)' : '1px solid #1e3566',
+                      borderRadius: 2,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 8, fontWeight: 'bold',
+                      cursor: 'pointer',
+                      padding: 0,
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      color: hit ? 'rgba(0,0,0,0.65)' : '#2a4060',
+                    }}
+                    title={t('addValueTitle', { value: n })}
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      setInputVal(String(n));
+                      addNumberVal(n);
+                    }}>
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );})}
+
+          <div style={{
+            marginTop: 6,
+            marginBottom: 8,
+            color: '#ff3b30',
+            fontSize: 20,
+            fontWeight: 700,
+            lineHeight: 1.18,
+            fontFamily: 'Trebuchet MS, Segoe UI, sans-serif',
+          }}>
+            {t('useGridControls')}
+          </div>
+
+          <div style={{
+            marginTop: 'auto',
+            borderTop: '1px solid #1e2f55',
+            paddingTop: 8,
+            color: '#667788',
+            fontSize: 11,
+            lineHeight: 1.4,
+          }}>
+            <div>
+              {t('colorScale')}
+              <span style={{ color: '#4ecb6f', fontWeight: 'bold' }}> {t('green')}</span>
+              {' '}→ 
+              <span style={{ color: '#c4d83f', fontWeight: 'bold' }}> {t('yellow')}</span>
+              {' '}→ 
+              <span style={{ color: '#f0a23a', fontWeight: 'bold' }}> {t('orange')}</span>
+              {' '}→ 
+              <span style={{ color: '#e45a4f', fontWeight: 'bold' }}> {t('red')}</span>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              {t('greenShows')}
+            </div>
+            <div style={{ marginTop: 2 }}>
+              {t('glowingNodes')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
