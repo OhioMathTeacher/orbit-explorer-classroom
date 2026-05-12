@@ -184,6 +184,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: 'Color primes',
     colorPrimesHelp: 'Gives prime numbers (2, 3, 5, 7, 11, …) their own color so they stand out from the rest.',
     view: 'View',
+    aboutAppHelp: 'Click for info about this app (opens the project page on GitHub).',
     stepNumbersLabel: 'Show step numbers',
     stepNumbersHelp: 'Labels each circle with its place in the sequence: 0 is your starting value, 1 is the next number, 2 is the one after that, and so on.',
     parityLabel: 'Parity coloring',
@@ -295,6 +296,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: 'Color para primos',
     colorPrimesHelp: 'Da a los números primos (2, 3, 5, 7, 11, …) su propio color para que destaquen del resto.',
     view: 'Vista',
+    aboutAppHelp: 'Haz clic para ver información sobre la app (abre la página del proyecto en GitHub).',
     stepNumbersLabel: 'Mostrar números de paso',
     stepNumbersHelp: 'Etiqueta cada círculo con su lugar en la secuencia: 0 es tu valor inicial, 1 es el siguiente número, 2 es el de después, y así sucesivamente.',
     parityLabel: 'Color por paridad',
@@ -406,6 +408,7 @@ const TRANSLATIONS = {
     colorPrimesLabel: '为质数着色',
     colorPrimesHelp: '给质数（2、3、5、7、11……）一个专属颜色，让它们从其他数字中突显出来。',
     view: '视图',
+    aboutAppHelp: '点击查看关于此应用的信息（在 GitHub 上打开项目页面）。',
     stepNumbersLabel: '显示步数编号',
     stepNumbersHelp: '为每个圆圈标注它在序列中的位置：0 是你的起始值，1 是下一个数字，2 是再下一个，依此类推。',
     parityLabel: '按奇偶着色',
@@ -899,43 +902,34 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
     for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
   }
 
-  // Formula watermark — always visible behind the graph
+  // Formula watermark — a single line along the bottom border, behind the graph
   const sign = a >= 0 ? '+' : '−';
-  const evenEquation = [
+  const annotationColor = theme.canvasAnnotation;
+  const formula = [
     { text: 'f(n) = n / ', color: theme.canvasWatermark },
     { text: String(d), color: PARAM_COLORS.d },
-  ];
-  const oddEquation = [
+    { text: '  ' + translate(language, 'nEven') + '       |       ', color: annotationColor },
     { text: 'f(n) = ', color: theme.canvasWatermark },
     { text: String(m), color: PARAM_COLORS.m },
     { text: 'n ', color: theme.canvasWatermark },
     { text: sign, color: theme.canvasWatermark },
     { text: ' ', color: theme.canvasWatermark },
     { text: String(Math.abs(a)), color: PARAM_COLORS.a },
+    { text: '  ' + translate(language, 'nOdd'), color: annotationColor },
   ];
-  const evenLabel = translate(language, 'nEven');
-  const oddLabel  = translate(language, 'nOdd');
   ctx.save();
   ctx.globalAlpha = 0.48;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
-  const maxFormulaWidth = Math.max(260, W - 80);
-  let formulaSize = Math.min(Math.round(W / 28), 46);
-  let annotationGap = 26;
-  while (formulaSize > 24) {
+  const maxFormulaWidth = Math.max(220, W - 40);
+  let formulaSize = Math.min(Math.round(W / 30), 46);
+  while (formulaSize > 13) {
     ctx.font = `bold ${formulaSize}px monospace`;
-    annotationGap = Math.max(24, Math.round(formulaSize * 0.72));
-    const evenWidth = getSegmentsWidth(ctx, evenEquation) + annotationGap + measureSegmentWidth(ctx, evenLabel);
-    const oddWidth = getSegmentsWidth(ctx, oddEquation) + annotationGap + measureSegmentWidth(ctx, oddLabel);
-    if (Math.max(evenWidth, oddWidth) <= maxFormulaWidth) break;
+    if (getSegmentsWidth(ctx, formula) <= maxFormulaWidth) break;
     formulaSize -= 2;
   }
-  const formulaBottomPad = 12;
   ctx.font = `bold ${formulaSize}px monospace`;
-  const formulaGap = Math.max(formulaSize + 24, Math.round(formulaSize * 1.9));
-  const annotationColor = theme.canvasAnnotation;
-  drawFormulaLine(ctx, W / 2, H - formulaBottomPad - formulaGap, evenEquation, evenLabel, annotationColor, annotationGap);
-  drawFormulaLine(ctx, W / 2, H - formulaBottomPad, oddEquation, oddLabel, annotationColor, annotationGap);
+  drawCenteredSegments(ctx, W / 2, H - 12, formula);
   ctx.restore();
 
   // ── Zoom/pan transform — everything below (edges, nodes, cycle layout) is in
@@ -2101,9 +2095,14 @@ function App() {
         display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18,
         borderBottom: `1px solid ${uiTheme.border}`, flexShrink: 0, minHeight: 60,
       }}>
-        <span style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 19, whiteSpace: 'nowrap' }}>
+        <a
+          href="https://github.com/OhioMathTeacher/orbit-explorer-classroom#readme"
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t('aboutAppHelp')}
+          style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 19, whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
           {t('appName')}
-        </span>
+        </a>
 
         {/* Parameter sliders — the primary controls */}
         <div style={{ display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
