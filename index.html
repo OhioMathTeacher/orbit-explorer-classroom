@@ -1092,6 +1092,8 @@ function App() {
   const [maxVisibleSteps, setMaxVisibleSteps] = useState(50);
   const [language, setLanguage] = useState(() => localStorage.getItem('orbit_language') || 'en');
   const [chatPanelWidth, setChatPanelWidth] = useState(320);
+  const [saveNudge, setSaveNudge] = useState(null); // {start, ...logEntry} when a new seed cleared an unsaved trajectory; null otherwise
+  const saveNudgeTimerRef = useRef(null);
   const dataTableDragRef = useRef(null);
   const dataTablePanelRef = useRef(null);
   const chatResizeRef = useRef(null);
@@ -1447,16 +1449,11 @@ function App() {
     }
   }, [maxVisibleSteps]);
 
-  // Load initial example sequence on mount
+  // Load one example trajectory on mount (the `seed` URL param, default 27).
+  // Single example because a new seed now replaces the canvas (Revision 4) — no overlay.
   useEffect(() => {
-    // Small delay so canvas has sized itself first
-    const t = setTimeout(() => {
-      // Load a simple example: 5, 7, 13 - students can see convergence patterns
-      [5, 7, 13].forEach((n, i) => {
-        setTimeout(() => addNumberVal(n), i * 400);
-      });
-    }, 300);
-    return () => clearTimeout(t);
+    const tid = setTimeout(() => addNumberVal(seed), 300);
+    return () => clearTimeout(tid);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resize canvas to fill its container
@@ -1563,15 +1560,37 @@ function App() {
     }
   }
 
-  function reset() {
+  // Clear only the trajectory canvas (nodes/edges/cycles/stored sequences).
+  // Leaves the grid highlights, Recent Results, and Saved Cases alone.
+  function clearGraph() {
     nodesRef.current      = new Map();
     edgesRef.current      = [];
     cyclesRef.current     = new Set();
     startNodesRef.current = new Set();
     sequencesRef.current  = [];
-    // Keep log (Recent Results) and savedCases for research data
-    // Only clear visual graph and grid highlights
+  }
+
+  function reset() {
+    clearGraph();
+    // Keep log (Recent Results) and savedCases for research data;
+    // the Reset button additionally clears the grid highlights.
     setVisitedNums(new Set());
+  }
+
+  // Revision 4: when a new seed replaces the canvas, if the trajectory being
+  // cleared was never saved to Cases, briefly surface a soft "save it?" nudge.
+  function maybeNudgeSave() {
+    if (sequencesRef.current.length > 0 && log[0] && !isCaseSaved(log[0])) {
+      if (saveNudgeTimerRef.current) clearTimeout(saveNudgeTimerRef.current);
+      setSaveNudge(log[0]);
+      saveNudgeTimerRef.current = setTimeout(() => setSaveNudge(null), 5000);
+    }
+  }
+
+  function dismissSaveNudge() {
+    if (saveNudgeTimerRef.current) clearTimeout(saveNudgeTimerRef.current);
+    saveNudgeTimerRef.current = null;
+    setSaveNudge(null);
   }
 
   function alignGridStart(value) {
@@ -1711,13 +1730,17 @@ function App() {
 
   function addNumberVal(val) {
     if (isNaN(val) || val <= 0 || val > MAX_START) return;
+    // Revision 4: a new seed replaces the previous trajectory on the canvas
+    // (no more overlay — the Cases tool handles persistent comparison).
+    maybeNudgeSave();
+    clearGraph();
     focusGridOnValue(val);
     const { m, a, d } = paramsRef.current;
     const { seq, outcome, cycleAt, maxValue } = computeSeq(val, m, a, d);
-    
+
     // Store the sequence for later filtering/extending
     sequencesRef.current.push({ seq, outcome, cycleAt, maxValue, startVal: val, m, a, d });
-    
+
     // Rebuild graph with current step limit
     rebuildGraphFromSequences();
 
@@ -1739,6 +1762,13 @@ function App() {
 
   function addNumber() {
     const parsed = parseSingleStartInput(inputVal);
+    if (parsed.kind === 'empty') {
+      // Revision 4: a blank seed + Enter (or Show steps) clears the canvas entirely.
+      maybeNudgeSave();
+      clearGraph();
+      setInputWarning('');
+      return;
+    }
     if (parsed.kind !== 'ok') {
       setInputWarning(getStartLimitWarning(inputVal, language) || t('startLimitInvalid'));
       return;
@@ -1961,6 +1991,36 @@ function App() {
           onPointerUp={handleCanvasPointerUp}
           onPointerCancel={handleCanvasPointerCancel}
           style={{ flex: 1, display: 'block', minWidth: 0, cursor: isDraggingNode ? 'grabbing' : 'grab' }} />
+
+        {/* Soft "save first?" nudge — appears briefly when a new seed replaced an unsaved trajectory (Revision 4) */}
+        {saveNudge && (
+          <div style={{
+            position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 7, display: 'flex', alignItems: 'center', gap: 12,
+            background: uiTheme.overlayBg, border: `1px solid ${uiTheme.borderStrong}`,
+            borderRadius: 9, padding: '9px 14px', boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
+            fontSize: 13, color: uiTheme.textPrimary, maxWidth: '90%',
+          }}>
+            <span>Want to save <strong>{formatValue(saveNudge.start)}</strong> first? It wasn’t added to Cases.</span>
+            <button
+              type="button"
+              onClick={() => { saveCase(saveNudge); dismissSaveNudge(); }}
+              style={{
+                background: 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)', border: 'none',
+                color: 'white', borderRadius: 5, padding: '4px 11px', fontSize: 12, fontWeight: 'bold',
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>{t('save')}</button>
+            <button
+              type="button"
+              onClick={dismissSaveNudge}
+              aria-label={t('close')}
+              title={t('close')}
+              style={{
+                background: 'transparent', border: 'none', color: uiTheme.textMuted,
+                fontSize: 17, lineHeight: 1, cursor: 'pointer', padding: '0 2px',
+              }}>×</button>
+          </div>
+        )}
 
         <div style={{
           position: 'absolute',
