@@ -170,6 +170,16 @@ const TRANSLATIONS = {
     dragHelp: 'Drag any number ball to pin it in place. Reset Layout releases pinned nodes and lets the layout settle again.',
     showCycles: 'Show Cycles',
     cycleLayoutHelp: 'Automatically arrange cycle nodes in separate groups for easier analysis.',
+    view: 'View',
+    stepNumbersLabel: 'Show step numbers',
+    stepNumbersHelp: 'Labels each circle with its place in the sequence: 0 is your starting value, 1 is the next number, 2 is the one after that, and so on.',
+    parityLabel: 'Parity coloring',
+    parityHelp: 'Colors each number by whether it is even or odd — even numbers blue, odd numbers orange.',
+    fit: 'Fit',
+    fitHelp: 'Fit the whole graph into the canvas (or double-click the canvas).',
+    resetViewHelp: 'Reset the zoom and panning to 100%.',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
     grid: 'Grid',
     lightTheme: 'Light Theme',
     close: 'Close',
@@ -258,6 +268,16 @@ const TRANSLATIONS = {
     dragHelp: 'Arrastra cualquier bola numerica para fijarla en su lugar. Restablecer diseno libera los nodos fijados y deja que el diseno se acomode otra vez.',
     showCycles: 'Mostrar ciclos',
     cycleLayoutHelp: 'Organiza automaticamente los nodos de ciclo en grupos separados para facilitar el analisis.',
+    view: 'Vista',
+    stepNumbersLabel: 'Mostrar números de paso',
+    stepNumbersHelp: 'Etiqueta cada círculo con su lugar en la secuencia: 0 es tu valor inicial, 1 es el siguiente número, 2 es el de después, y así sucesivamente.',
+    parityLabel: 'Color por paridad',
+    parityHelp: 'Colorea cada número según si es par o impar — los pares en azul, los impares en naranja.',
+    fit: 'Ajustar',
+    fitHelp: 'Ajusta todo el grafo al lienzo (o haz doble clic en el lienzo).',
+    resetViewHelp: 'Restablece el zoom y el desplazamiento al 100%.',
+    zoomIn: 'Acercar',
+    zoomOut: 'Alejar',
     grid: 'Cuadricula',
     lightTheme: 'Tema claro',
     close: 'Cerrar',
@@ -346,6 +366,16 @@ const TRANSLATIONS = {
     dragHelp: '拖动任意数字球即可将它固定在当前位置。重置布局会释放固定节点，并让布局重新整理。',
     showCycles: '显示循环',
     cycleLayoutHelp: '自动将循环节点排列成独立的组以便于分析。',
+    view: '视图',
+    stepNumbersLabel: '显示步数编号',
+    stepNumbersHelp: '为每个圆圈标注它在序列中的位置：0 是你的起始值，1 是下一个数字，2 是再下一个，依此类推。',
+    parityLabel: '按奇偶着色',
+    parityHelp: '按数字是偶数还是奇数给它上色——偶数为蓝色，奇数为橙色。',
+    fit: '适应',
+    fitHelp: '把整个图形放进画布（也可以双击画布）。',
+    resetViewHelp: '把缩放和平移重置为 100%。',
+    zoomIn: '放大',
+    zoomOut: '缩小',
     grid: '网格',
     lightTheme: '浅色主题',
     close: '关闭',
@@ -1857,15 +1887,6 @@ function App() {
     }, delay);
   }
 
-  // View menu: reset all View-menu settings to defaults (and reset the zoom/pan).
-  function resetViewMenu() {
-    setShowStepNumbers(false);
-    setParityColoring(false);
-    // (cycle-layout-mode reset will go here once that's wired)
-    resetView();
-    setShowViewMenu(false);
-  }
-
   function handleCanvasPointerDown(event) {
     const point = getCanvasPoint(event);
     if (!point) return;
@@ -2088,6 +2109,7 @@ function App() {
               type="button"
               disabled={!log[0] || isCaseSaved(log[0])}
               onClick={() => log[0] && saveCase(log[0])}
+              title={t('saveCaseHelp')}
               style={{
                 background: !log[0] ? '#253247' : isCaseSaved(log[0]) ? '#254231' : 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)',
                 border: 'none',
@@ -2101,27 +2123,6 @@ function App() {
               }}>
               {!log[0] ? t('saveLatestCaseDisabled') : isCaseSaved(log[0]) ? t('latestCaseSaved') : t('saveLatestCase')}
             </button>
-            <button
-              type="button"
-              title={t('saveCaseHelp')}
-              aria-label={t('saveCaseHelp')}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: '50%',
-                border: '1px solid #44608a',
-                background: '#162040',
-                color: '#9fc3f0',
-                fontSize: 13,
-                fontWeight: 'bold',
-                padding: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'help',
-              }}>
-              ?
-            </button>
 
             {/* View dropdown (Revision 5) */}
             <div ref={viewMenuRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -2133,7 +2134,7 @@ function App() {
                   color: 'white', padding: '7px 13px', borderRadius: 5, fontSize: 14, fontWeight: 'bold',
                   display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
                 }}>
-                View <span style={{ fontSize: 10, opacity: 0.8 }}>▾</span>
+                {t('view')} <span style={{ fontSize: 10, opacity: 0.8 }}>▾</span>
               </button>
               {showViewMenu && (
                 <div style={{
@@ -2143,23 +2144,14 @@ function App() {
                   color: uiTheme.textPrimary, fontWeight: 'normal',
                 }}>
                   {/* cycle-layout modes (Polygon / Star / Sorted / Parity-split) land in the next sub-step */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
+                  <label title={t('stepNumbersHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={showStepNumbers} onChange={e => setShowStepNumbers(e.target.checked)} />
-                    Show step numbers
+                    {t('stepNumbersLabel')}
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
+                  <label title={t('parityHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', fontSize: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={parityColoring} onChange={e => setParityColoring(e.target.checked)} />
-                    Parity coloring
+                    {t('parityLabel')}
                   </label>
-                  <div style={{ height: 1, background: uiTheme.border, margin: '6px 10px' }} />
-                  <button type="button" onClick={() => { fitToCanvas(); setShowViewMenu(false); }} style={{
-                    display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 14,
-                    background: 'transparent', border: 'none', color: uiTheme.textPrimary, cursor: 'pointer',
-                  }}>Fit to canvas</button>
-                  <button type="button" onClick={resetViewMenu} style={{
-                    display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 14,
-                    background: 'transparent', border: 'none', color: uiTheme.textPrimary, cursor: 'pointer',
-                  }}>Reset view</button>
                 </div>
               )}
             </div>
@@ -2249,25 +2241,25 @@ function App() {
           borderRadius: 8, padding: '5px 8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           color: uiTheme.textPrimary, userSelect: 'none',
         }}>
-          <button type="button" onClick={() => zoomCentered(0.8)} title="Zoom out" aria-label="Zoom out" style={{
+          <button type="button" onClick={() => zoomCentered(0.8)} title={t('zoomOut')} aria-label={t('zoomOut')} style={{
             width: 30, height: 30, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 22, fontWeight: 'bold',
             lineHeight: 1, padding: 0, cursor: 'pointer',
           }}>−</button>
           <span style={{ minWidth: 56, textAlign: 'center', fontSize: 15, fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }}>{zoomPct}%</span>
-          <button type="button" onClick={() => zoomCentered(1.25)} title="Zoom in" aria-label="Zoom in" style={{
+          <button type="button" onClick={() => zoomCentered(1.25)} title={t('zoomIn')} aria-label={t('zoomIn')} style={{
             width: 30, height: 30, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 22, fontWeight: 'bold',
             lineHeight: 1, padding: 0, cursor: 'pointer',
           }}>+</button>
-          <button type="button" onClick={fitToCanvas} title="Fit the graph to the canvas (or double-click the canvas)" style={{
+          <button type="button" onClick={fitToCanvas} title={t('fitHelp')} style={{
             height: 30, padding: '0 12px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
-          }}>Fit</button>
-          <button type="button" onClick={resetView} title="Reset zoom & pan to 100%" style={{
+          }}>{t('fit')}</button>
+          <button type="button" onClick={resetView} title={t('resetViewHelp')} style={{
             height: 30, padding: '0 12px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
             background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
-          }}>Reset</button>
+          }}>{t('reset')}</button>
         </div>
 
         {/* Soft "save first?" nudge — appears briefly when a new seed replaced an unsaved trajectory (Revision 4) */}
@@ -2346,7 +2338,9 @@ function App() {
             />
             {t('lightTheme')}
           </label>
-          <label style={{
+          <label
+            title={t('cycleLayoutHelp')}
+            style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
@@ -2364,27 +2358,6 @@ function App() {
             />
             {t('showCycles')}
           </label>
-          <button
-            type="button"
-            title={t('cycleLayoutHelp')}
-            aria-label={t('cycleLayoutHelp')}
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: '50%',
-              border: `1px solid ${uiTheme.borderStrong}`,
-              background: uiTheme.overlayBgSoft,
-              color: uiTheme.textSecondary,
-              fontSize: 12,
-              fontWeight: 'bold',
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'help',
-            }}>
-            ?
-          </button>
         </div>
 
         {/* Visible-steps control retired in Revision 2 — "max steps" now lives in the top control bar, next to the seed input. */}
