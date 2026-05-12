@@ -918,18 +918,20 @@ function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, h
     { text: '  ' + translate(language, 'nOdd'), color: annotationColor },
   ];
   ctx.save();
-  ctx.globalAlpha = 0.48;
+  ctx.globalAlpha = 0.45;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
-  const maxFormulaWidth = Math.max(220, W - 40);
-  let formulaSize = Math.min(Math.round(W / 30), 46);
-  while (formulaSize > 13) {
+  // Keep clear of the zoom controls in the bottom-left corner: only use the space to their right.
+  const leftReserve = 340;
+  const maxFormulaWidth = Math.max(200, W - leftReserve - 20);
+  let formulaSize = Math.min(Math.round(W / 42), 22);
+  while (formulaSize > 11) {
     ctx.font = `bold ${formulaSize}px monospace`;
     if (getSegmentsWidth(ctx, formula) <= maxFormulaWidth) break;
-    formulaSize -= 2;
+    formulaSize -= 1;
   }
   ctx.font = `bold ${formulaSize}px monospace`;
-  drawCenteredSegments(ctx, W / 2, H - 12, formula);
+  drawCenteredSegments(ctx, (leftReserve + (W - 20)) / 2, H - 12, formula);
   ctx.restore();
 
   // ── Zoom/pan transform — everything below (edges, nodes, cycle layout) is in
