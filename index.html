@@ -795,86 +795,78 @@ function physicsStep(nodes, edges, W, H) {
 }
 
 // ── Cycle Layout ─────────────────────────────────────────────────────────────
+// Walk a single cycle in trajectory order: start at the cycle's entry point and follow
+// the unique outgoing edge that stays inside the cycle until it loops back.
+function walkCycle(cycleVals, cycleNodes, edges) {
+  if (cycleVals.length === 0) return [];
+  const next = new Map();
+  for (const e of edges) {
+    if (cycleNodes.has(e.from) && cycleNodes.has(e.to) && !next.has(e.from)) next.set(e.from, e.to);
+  }
+  const order = [];
+  const seen = new Set();
+  let cur = cycleVals[0]; // cyclesRef is built in trajectory order, so [0] is the cycle's entry point
+  while (cur !== undefined && !seen.has(cur)) { order.push(cur); seen.add(cur); cur = next.get(cur); }
+  for (const v of cycleVals) if (!seen.has(v)) order.push(v); // safety net (shouldn't happen)
+  return order;
+}
+
+// Cycle-layout modes. The cycle's N values are placed around a circle; the modes differ only
+// in the ordering/grouping of those points. Path-to-cycle nodes go in a grid below the circle.
+// The trajectory edges are drawn elsewhere, so they trace the circle's perimeter (Polygon) or
+// criss-cross the interior (Sorted / Parity-split).
 function applyCycleLayout(nodes, edges, cycleNodes, W, H, mode = 'polygon') {
-  // mode ∈ {'polygon','star','sorted','parity'} — all currently render the same arrangement;
-  // the distinct Star {N/k} / Sorted / Parity-split placements land in Revision 5b-ii.
-  // Detect separate cycle groups by traversing edges
-  const cycleGroups = [];
-  const visited = new Set();
-  
-  for (const val of cycleNodes) {
-    if (visited.has(val)) continue;
-    
-    // BFS to find all connected cycle nodes
-    const group = [];
-    const queue = [val];
-    visited.add(val);
-    
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (cycleNodes.has(current)) {
-        group.push(current);
-        
-        // Find connected nodes through edges
-        for (const edge of edges) {
-          if (edge.from === current && cycleNodes.has(edge.to) && !visited.has(edge.to)) {
-            visited.add(edge.to);
-            queue.push(edge.to);
-          }
-          if (edge.to === current && cycleNodes.has(edge.from) && !visited.has(edge.from)) {
-            visited.add(edge.from);
-            queue.push(edge.from);
-          }
-        }
-      }
-    }
-    
-    if (group.length > 0) {
-      cycleGroups.push(group);
-    }
-  }
-  
-  // Arrange cycle groups vertically with space between them
-  const groupGap = 120;
-  const startY = 100;
-  
-  cycleGroups.forEach((group, groupIdx) => {
-    // Arrange each cycle group in a circle
-    const centerX = W / 2;
-    const centerY = startY + (groupIdx * groupGap);
-    const radius = Math.min(60, 30 + group.length * 5);
-    
-    group.forEach((val, idx) => {
-      if (!nodes.has(val)) return;
-      const node = nodes.get(val);
-      const angle = (idx / group.length) * 2 * Math.PI - Math.PI / 2;
-      node.x = centerX + radius * Math.cos(angle);
-      node.y = centerY + radius * Math.sin(angle);
-      node.vx = 0;
-      node.vy = 0;
-    });
-  });
-  
-  // Arrange non-cycle nodes in the remaining space
-  const nonCycleNodes = [...nodes.keys()].filter(v => !cycleNodes.has(v));
-  if (nonCycleNodes.length > 0) {
-    const bottomY = startY + (cycleGroups.length * groupGap) + 60;
-    const cols = Math.ceil(Math.sqrt(nonCycleNodes.length));
-    const spacing = Math.min(80, (W - 100) / cols);
+  const cx = W / 2;
+  const cycleVals = [...cycleNodes].filter(v => nodes.has(v));
+  const nonCycleVals = [...nodes.keys()].filter(v => !cycleNodes.has(v));
 
-    nonCycleNodes.forEach((val, idx) => {
-      if (!nodes.has(val)) return;
-      const node = nodes.get(val);
-      const row = Math.floor(idx / cols);
-      const col = idx % cols;
-      node.x = 50 + col * spacing + (W - cols * spacing) / 2;
-      node.y = bottomY + row * spacing;
-      node.vx = 0;
-      node.vy = 0;
+  let cycleBottomY = 90; // y just below the cycle circle (where the path grid starts)
+  if (cycleVals.length > 0) {
+    const N = cycleVals.length;
+    const radius = Math.max(70, Math.min(Math.min(W, H) * 0.34, 26 + N * 22));
+    const cyCenterY = 90 + radius; // circle top ~y=90
+
+    if (mode === 'parity') {
+      const odds  = cycleVals.filter(v => v % 2 !== 0).sort((a, b) => a - b);
+      const evens = cycleVals.filter(v => v % 2 === 0).sort((a, b) => a - b);
+      // odds along the top half (θ: π→0, i.e. 9 o'clock through 12 to 3); evens along the bottom (π→2π).
+      const placeArc = (vals, t0, t1) => vals.forEach((v, i) => {
+        const node = nodes.get(v); if (!node) return;
+        const t = vals.length === 1 ? (t0 + t1) / 2 : t0 + (t1 - t0) * (i + 1) / (vals.length + 1);
+        node.x = cx + radius * Math.cos(t);
+        node.y = cyCenterY - radius * Math.sin(t);
+        node.vx = 0; node.vy = 0;
+      });
+      placeArc(odds, Math.PI, 0);
+      placeArc(evens, Math.PI, 2 * Math.PI);
+    } else {
+      const order = (mode === 'sorted') ? [...cycleVals].sort((a, b) => a - b) : walkCycle(cycleVals, cycleNodes, edges);
+      order.forEach((v, i) => {
+        const node = nodes.get(v); if (!node) return;
+        const t = Math.PI / 2 - (i / order.length) * 2 * Math.PI; // start at 12 o'clock, go clockwise
+        node.x = cx + radius * Math.cos(t);
+        node.y = cyCenterY - radius * Math.sin(t);
+        node.vx = 0; node.vy = 0;
+      });
+    }
+    cycleBottomY = cyCenterY + radius + 50;
+  }
+
+  // Path-to-cycle (non-cycle) nodes — a compact grid below the circle.
+  if (nonCycleVals.length > 0) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nonCycleVals.length)));
+    const spacing = Math.min(95, Math.max(60, (W - 120) / cols));
+    const startY = (cycleVals.length > 0) ? cycleBottomY : 110;
+    nonCycleVals.forEach((v, i) => {
+      const node = nodes.get(v); if (!node) return;
+      const row = Math.floor(i / cols), col = i % cols;
+      node.x = cx - ((cols - 1) * spacing) / 2 + col * spacing;
+      node.y = startY + row * spacing;
+      node.vx = 0; node.vy = 0;
     });
   }
 
-  // Vertically center the whole arrangement in the canvas (it's laid out top-anchored above).
+  // Vertically center the whole arrangement in the canvas.
   let minY = Infinity, maxY = -Infinity;
   for (const node of nodes.values()) {
     if (node.y < minY) minY = node.y;
@@ -2208,7 +2200,6 @@ function App() {
                   {[
                     ['spread',  t('layoutSpread'),  t('layoutSpreadHelp')],
                     ['polygon', t('layoutPolygon'), t('layoutPolygonHelp')],
-                    ['star',    t('layoutStar'),    t('layoutStarHelp')],
                     ['sorted',  t('layoutSorted'),  t('layoutSortedHelp')],
                     ['parity',  t('layoutParity'),  t('layoutParityHelp')],
                   ].map(([mode, label, help]) => (
