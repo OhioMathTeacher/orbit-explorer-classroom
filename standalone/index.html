@@ -1,0 +1,3300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Orbit Explorer</title>
+  <script>
+    (function forceFreshLoad() {
+      var BUILD = '1774216101-r6';
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('fr') !== BUILD || !params.has('cb')) {
+        params.set('fr', BUILD);
+        params.set('cb', String(Date.now()));
+        var next = window.location.pathname + '?' + params.toString() + window.location.hash;
+        window.location.replace(next);
+        return;
+      }
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+      }
+
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(k) { caches.delete(k); });
+        });
+      }
+    })();
+  </script>
+  <script src="vendor/react.production.min.js"></script>
+  <script src="vendor/react-dom.production.min.js"></script>
+  <script src="vendor/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #131e3a; color: white; font-family: 'Segoe UI', monospace; overflow: hidden; }
+    button { cursor: pointer; font-family: inherit; }
+    input { font-family: inherit; }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+    input[type=range] { accent-color: #5588dd; }
+    /* Larger, per-parameter-colored sliders for the top control bar.
+       The thumb uses currentColor (set via an inline `color`); the track uses
+       --slider-track (set inline from the active theme), falling back to a light gray. */
+    input[type=range].big-slider {
+      -webkit-appearance: none; appearance: none;
+      height: 26px; background: transparent; cursor: pointer; vertical-align: middle;
+    }
+    input[type=range].big-slider::-webkit-slider-runnable-track {
+      height: 8px; border-radius: 4px; background: var(--slider-track, rgba(255,255,255,0.3));
+    }
+    input[type=range].big-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 22px; height: 22px; margin-top: -7px; border-radius: 50%;
+      background: currentColor; box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+    }
+    input[type=range].big-slider::-moz-range-track {
+      height: 8px; border-radius: 4px; background: var(--slider-track, rgba(255,255,255,0.3));
+    }
+    input[type=range].big-slider::-moz-range-thumb {
+      width: 22px; height: 22px; border: none; border-radius: 50%;
+      background: currentColor; box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+    }
+
+    /* ═══ AI SETTINGS — modal + button (ported from close-reader) ═══ */
+    .ai-btn {
+      font-size: 0.78rem; font-weight: 500;
+      padding: 0.32rem 0.7rem;
+      border: 1px solid rgba(100,180,240,0.30); border-radius: 4px;
+      background: transparent; color: #9eb2d7; cursor: pointer;
+      display: flex; align-items: center; gap: 0.4rem;
+      transition: all 0.18s;
+    }
+    .ai-btn:hover { border-color: rgba(100,180,240,0.60); color: #cfe1ff; }
+    .ai-btn.ai-active { border-color: rgba(120,200,140,0.45); color: #8fd49a; }
+    .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+    .ai-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65); z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    .ai-modal-overlay.open { display: flex; }
+    .ai-modal {
+      background: #1a2738; border: 1px solid rgba(120,180,240,0.25);
+      border-radius: 12px; padding: 1.6rem; width: 560px; max-width: calc(100vw - 2rem);
+      max-height: calc(100vh - 2rem); overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55); color: #ddd3c0;
+    }
+    .ai-modal h2 {
+      font-weight: 400; color: #e8f0ff; font-size: 1.3rem;
+      margin: 0 0 1rem; font-family: 'Segoe UI', sans-serif;
+    }
+    .ai-modal h3 {
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #7799bb;
+      margin: 0.6rem 0 0.5rem;
+    }
+    .ai-provider-cards {
+      display: grid; grid-template-columns: repeat(2,1fr); gap: 0.55rem;
+      margin-bottom: 0.4rem;
+    }
+    .ai-provider-card {
+      background: rgba(255,255,255,0.04); border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 0.8rem 0.7rem; cursor: pointer;
+      transition: all 0.18s; position: relative; text-align: left;
+      color: inherit; font-family: inherit;
+    }
+    .ai-provider-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(120,180,240,0.4); }
+    .ai-provider-card.selected { border-color: #58a6ff; background: rgba(88,166,255,0.10); }
+    .ai-card-title { font-weight: 600; font-size: 0.85rem; color: #e8f0ff; margin-bottom: 0.3rem; }
+    .ai-card-desc { font-size: 0.72rem; color: #8a96a8; line-height: 1.45; }
+    .ai-card-badge {
+      font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; display: inline-block;
+      padding: 0.15rem 0.45rem; border-radius: 3px; margin-top: 0.5rem;
+    }
+    .ai-badge-paid { background: rgba(120,80,40,0.35); color: #d4a06a; }
+    .ai-badge-free { background: rgba(40,120,60,0.30); color: #7ec88a; }
+    .ai-badge-local { background: rgba(60,80,160,0.30); color: #8aabe0; }
+    .ai-badge-none { background: rgba(90,90,90,0.30); color: #888; }
+    .ai-key-section { margin: 0.8rem 0 0.4rem; }
+    .ai-key-section input {
+      width: 100%; padding: 0.55rem 0.7rem;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(120,180,240,0.25);
+      border-radius: 5px; color: #e8f0ff; font-family: monospace;
+      font-size: 0.82rem; outline: none; margin-bottom: 0.3rem;
+    }
+    .ai-key-section input:focus { border-color: rgba(120,180,240,0.6); }
+    .ai-key-hint { font-size: 0.7rem; color: #6a7686; line-height: 1.45; }
+    .ai-key-hint a { color: #8fb8e8; text-decoration: none; }
+    .ai-key-hint a:hover { text-decoration: underline; }
+    .ai-endpoint-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; }
+    .ai-endpoint-row input { flex: 1; padding: 0.45rem 0.6rem; }
+    .ai-endpoint-row button {
+      background: rgba(120,180,240,0.15); color: #cfe1ff;
+      border: 1px solid rgba(120,180,240,0.3); border-radius: 4px;
+      padding: 0.45rem 0.7rem; font-size: 0.75rem; cursor: pointer;
+    }
+    .ai-endpoint-row button:hover { background: rgba(120,180,240,0.25); }
+    .ai-endpoint-list { font-size: 0.72rem; color: #8a96a8; margin-bottom: 0.5rem; }
+    .ai-endpoint-list-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.25rem 0; border-bottom: 1px dashed rgba(255,255,255,0.06);
+    }
+    .ai-endpoint-list-item button {
+      background: transparent; border: none; color: #c87070;
+      font-size: 0.85rem; cursor: pointer; padding: 0 0.3rem;
+    }
+    .ai-modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .ai-modal-actions button {
+      font-size: 0.82rem; font-weight: 500;
+      padding: 0.55rem 1.1rem; border-radius: 5px; border: none; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .am-save { background: #58a6ff; color: #0c1424; flex: 1; }
+    .am-save:hover { background: #79b8ff; }
+    .am-cancel { background: rgba(255,255,255,0.08); color: #9eb2d7; }
+    .am-cancel:hover { background: rgba(255,255,255,0.15); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const MAX_ITER  = 600;    // max steps before timeout
+const MAX_VAL   = 1e12;   // divergence threshold
+const MAX_START = 1e9;    // largest allowed starting value from the UI
+const MAX_NODES = 120;    // cap displayed nodes
+const NODE_R    = 15;     // base node radius px
+const START_R   = 22;     // radius for starting numbers (persistent anchor)
+const RELIABLE_START_LIMIT = Math.min(MAX_START, Number.MAX_SAFE_INTEGER);
+const MIN_ZOOM  = 0.2;    // canvas zoom limits (Revision 6)
+const MAX_ZOOM  = 8;
+const PARAM_COLORS = {
+  m: '#63d471',
+  a: '#ffb347',
+  d: '#6bb7ff',
+};
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Espanol' },
+  { value: 'zh-Hans', label: '简体中文' },
+];
+const RESPONSE_LANGUAGE_NAMES = {
+  en: 'English',
+  es: 'Spanish',
+  'zh-Hans': 'Simplified Chinese',
+};
+const CHAT_KEY_STORAGE = 'zhenggpt_key';
+const CHAT_PANEL_MIN_WIDTH = 260;
+const CHAT_PANEL_MAX_WIDTH = 720;
+
+// ═══════════════════════════════════
+// AI providers — three cloud (Anthropic, Gemini, Groq), "No AI", and
+// user-configured local endpoints (each endpoint surfaces N model cards).
+// Nothing about server URLs is hardcoded; users configure via the modal.
+// ═══════════════════════════════════
+
+const AI_STORAGE = {
+  provider: 'orbit.ai.provider',
+  key: (id) => `orbit.ai.key.${id}`,
+  endpoints: 'orbit.ai.localEndpoints',
+};
+
+const AI_CLOUD_PROVIDERS = [
+  {
+    id: 'anthropic', title: 'Anthropic Claude',
+    desc: 'Your own key. Claude Sonnet — powerful and precise.',
+    badge: 'Own Key', badgeClass: 'ai-badge-paid',
+    keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…',
+    keyHint: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
+  },
+  {
+    id: 'gemini', title: 'Gemini 2.0 Flash',
+    desc: 'Free tier via Google. Use a personal Gmail account.',
+    badge: 'Free', badgeClass: 'ai-badge-free',
+    keyUrl: 'https://aistudio.google.com/apikey', placeholder: 'AIza…',
+    keyHint: 'Visit <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> for a free key — <strong style="color:#d4a843">use a personal Gmail, not a school account</strong>. Stored in your browser only.',
+  },
+  {
+    id: 'groq', title: 'Groq (Llama 3.3)',
+    desc: 'Free tier. Any email — no Google account needed.',
+    badge: 'Free', badgeClass: 'ai-badge-free',
+    keyUrl: 'https://console.groq.com/keys', placeholder: 'gsk_…',
+    keyHint: 'Visit <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> for a free key — any email works. Stored in your browser only.',
+  },
+];
+
+function getStoredProvider()        { return localStorage.getItem(AI_STORAGE.provider) || 'none'; }
+function setStoredProvider(id)      { localStorage.setItem(AI_STORAGE.provider, id); }
+function getStoredKey(provId)       { return localStorage.getItem(AI_STORAGE.key(provId)) || ''; }
+function setStoredKey(provId, key)  {
+  if (key) localStorage.setItem(AI_STORAGE.key(provId), key);
+  else     localStorage.removeItem(AI_STORAGE.key(provId));
+}
+function getStoredLocalEndpoints() {
+  try { return JSON.parse(localStorage.getItem(AI_STORAGE.endpoints) || '[]'); }
+  catch { return []; }
+}
+function setStoredLocalEndpoints(arr) {
+  localStorage.setItem(AI_STORAGE.endpoints, JSON.stringify(arr));
+}
+
+// Parse a 'local:<endpoint>:<modelId>' provider id. The endpoint may contain
+// colons (e.g., 'http://host:8765'), so the modelId is everything after the LAST colon.
+function parseLocalProvider(providerId) {
+  if (!providerId?.startsWith('local:')) return null;
+  const rest = providerId.slice('local:'.length);
+  const lastColon = rest.lastIndexOf(':');
+  if (lastColon < 0) return null;
+  return { endpoint: rest.slice(0, lastColon).replace(/\/$/, ''), model: rest.slice(lastColon + 1) };
+}
+
+// Dispatch a chat request to the selected provider. Returns the assistant's reply text.
+// Throws Error if the provider isn't usable (no provider / no key / network failure / non-2xx).
+async function askAI(providerId, messages, systemPrompt) {
+  if (!providerId || providerId === 'none') {
+    throw new Error('No AI provider selected. Open the 🤖 AI menu to choose one.');
+  }
+
+  // Local OpenAI-compatible endpoint (user-configured URL)
+  const local = parseLocalProvider(providerId);
+  if (local) {
+    const res = await fetch(`${local.endpoint}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: local.model,
+        // Qwen3.5-4B reliably emits "Thinking Process:" preamble before the actual answer.
+        // The shim strips it, but the model needs enough room to *finish* thinking and
+        // emit a real response. 700 tokens often gets cut off mid-analysis.
+        max_tokens: 2000,
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Local model error ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || '';
+  }
+
+  const key = getStoredKey(providerId);
+  if (!key) throw new Error(`No API key saved for ${providerId}. Open the 🤖 AI menu to enter one.`);
+
+  if (providerId === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('Invalid Anthropic key. Update it via 🤖 AI.');
+      throw new Error(`Anthropic ${res.status}: ${err?.error?.message || 'error'}`);
+    }
+    const data = await res.json();
+    return data?.content?.map(b => b.text || '').join('') || '';
+  }
+
+  if (providerId === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: messages.map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+        generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 400 || res.status === 403) throw new Error('Invalid Gemini key. Update it via 🤖 AI.');
+      throw new Error(`Gemini ${res.status}: ${err?.error?.message || 'error'}`);
+    }
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  if (providerId === 'groq') {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        max_tokens: 600,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      if (res.status === 401) throw new Error('Invalid Groq key. Update it via 🤖 AI.');
+      throw new Error(`Groq ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || '';
+  }
+
+  throw new Error(`Unknown provider: ${providerId}`);
+}
+
+function getChatErrorMessage(error, language) {
+  if (error?.message) return error.message;
+  if (language === 'es') return 'Error de red. Revisa tu conexion.';
+  if (language === 'zh-Hans') return '网络错误。请检查你的连接。';
+  return 'Network error. Check your connection.';
+}
+
+const TRANSLATIONS = {
+  en: {
+    appName: 'Orbit Explorer v2',
+    language: 'Language',
+    singleStartValue: 'Type a value, press Enter',
+    nEven: '(n even)',
+    nOdd: '(n odd)',
+    add: 'Show steps',
+    reset: 'Reset',
+    cases: 'Cases',
+    saveLatestCase: 'Save Latest Case',
+    latestCaseSaved: 'Latest Case Saved',
+    saveLatestCaseDisabled: 'Save Latest Case',
+    saveCaseHelp: 'Save the most recent result here, or open Cases and save any row from Recent Results.',
+    valueLimitReached: 'VALUE LIMIT REACHED',
+    startingValueExceeded: 'Starting value {start} exceeded {max} after {steps} steps',
+    valueLimitExplanation: 'This is not an input error. The sequence kept growing, so the app stopped once it crossed the current exploration ceiling. Peak value reached: {maxValue}.',
+    continue: 'CONTINUE',
+    resetLayout: 'Reset Layout',
+    dragHelp: 'Drag any number ball to pin it in place. Reset Layout releases pinned nodes and lets the layout settle again.',
+    showCycles: 'Show Cycles',
+    cycleLayoutHelp: 'Automatically arrange cycle nodes in separate groups for easier analysis.',
+    layoutHeader: 'Layout',
+    layoutSpread: 'Spread out',
+    layoutSpreadHelp: 'The default springy graph — circles push apart, arrows pull connected ones together.',
+    layoutPolygon: 'Polygon',
+    layoutPolygonHelp: 'Arrange the cycle as a regular polygon, in the order the sequence visits its values.',
+    layoutStar: 'Star',
+    layoutStarHelp: 'Arrange the cycle as a star polygon {N/k} — connect every k-th value instead of the next one.',
+    layoutSorted: 'Sorted',
+    layoutSortedHelp: 'Arrange the cycle around a circle in size order: smallest at the top, increasing clockwise.',
+    layoutParity: 'Parity-split',
+    layoutParityHelp: 'Arrange the cycle with odd values along the top half of the circle and even values along the bottom.',
+    colorPrimesLabel: 'Color primes',
+    colorPrimesHelp: 'Gives prime numbers (2, 3, 5, 7, 11, …) their own color so they stand out from the rest.',
+    view: 'View',
+    aboutAppHelp: 'Click to see info about this app on GitHub. (Use your browser\'s Back button to return here.)',
+    stepNumbersLabel: 'Show step numbers',
+    stepNumbersHelp: 'Labels each circle with its place in the sequence: 0 is your starting value, 1 is the next number, 2 is the one after that, and so on.',
+    parityLabel: 'Parity coloring',
+    parityHelp: 'Colors each number by whether it is even or odd — even numbers blue, odd numbers orange.',
+    fit: 'Fit',
+    fitHelp: 'Fit the whole graph into the canvas (or double-click the canvas).',
+    resetViewHelp: 'Reset the zoom and panning to 100%.',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    grid: 'Grid',
+    lightTheme: 'Light Theme',
+    close: 'Close',
+    recentResults: 'Recent Results',
+    savedCases: 'Saved Cases',
+    casesExplanation: 'Recent Results fill automatically every time you add a start value. Saved Cases are the examples students choose to keep for pattern-hunting.',
+    start: 'Start',
+    outcome: 'Outcome',
+    steps: 'Steps',
+    peak: 'Peak',
+    keep: 'Keep',
+    noResultsYet: 'No results yet. Add a starting value to create a case.',
+    save: 'Save',
+    saved: 'Saved',
+    clearSaved: 'Clear Saved',
+    remove: 'Remove',
+    noSavedCasesYet: 'No saved cases yet. Save a few interesting examples from Recent Results to compare patterns.',
+    enterApiKey: 'Enter your Athena API key (OpenRouter or DeepSeek):',
+    saveKey: 'Save Key',
+    getApiKeysAt: 'Get keys at',
+    noKey: 'no key',
+    changeKey: 'Change Key',
+    keyDetected: 'Detected: {provider}',
+    zhengThinking: 'Athena is thinking...',
+    downloadChat: 'Download Chat',
+    askZheng: 'Ask Athena...',
+    send: 'Send',
+    aiSetup: 'AI Setup',
+    clearChat: 'Clear',
+    askModel: 'Ask {model}…',
+    askNoModel: 'Choose a model via 🤖 AI Setup',
+    dataReferenceGrids: 'DATA REFERENCE GRIDS',
+    gridWindow: 'GRID WINDOW',
+    startAt: 'Start at',
+    findLabel: 'Find',
+    findHelp: 'Type a value and press Enter — the grid jumps to its block of 100 and rings that cell.',
+    blocks: 'Blocks',
+    usePreviousNext: 'Use Previous/Next to move the visible window.',
+    previous: 'Previous',
+    next: 'Next',
+    recentStarts: 'RECENT STARTS',
+    largeValuesAppear: 'Large starting values will appear here and in the table.',
+    useGridControls: 'Use the grid window controls to jump anywhere. Larger values stay visible in Recent Starts and the table.',
+    colorScale: 'Color scale:',
+    green: 'green',
+    yellow: 'yellow',
+    orange: 'orange',
+    red: 'red',
+    greenShows: 'Green shows smaller values; red shows larger values.',
+    glowingNodes: 'Glowing nodes mark detected cycle values.',
+    visibleSteps: 'Visible Steps',
+    maxSteps: 'max steps',
+    stepsHelp: 'Control how many steps of each sequence are displayed. Increase to see cycle repetitions, decrease to see early steps only.',
+    addValueTitle: 'Add {value}',
+    startLimitAbove: "Start values above {limit} are outside the applet's reliable range.",
+    startLimitUnsafe: 'That value is larger than JavaScript can track reliably as an exact integer.',
+    startLimitInvalid: 'Enter a positive whole number within the supported range.',
+    transcriptTitle: 'ORBIT EXPLORER - CHAT TRANSCRIPT',
+    transcriptDate: 'Date/Time',
+    transcriptParameters: 'Parameters',
+    transcriptNumbersExplored: 'Numbers Explored',
+    transcriptSummary: 'EXPLORATION SUMMARY',
+    transcriptConversation: 'CONVERSATION WITH Athena',
+    transcriptEnd: 'End of transcript',
+    chatGreeting: "Hi! I'm here to help you think through what you're discovering. What patterns are you noticing in your sequences?",
+    outcomes: {
+      converge: 'converges -> 1',
+      cycle: 'enters cycle',
+      diverge: 'diverges',
+      noninteger: 'non-integer',
+      timeout: 'timed out',
+    },
+  },
+  es: {
+    appName: 'Orbit Explorer',
+    language: 'Idioma',
+    singleStartValue: 'Escribe un valor, pulsa Enter',
+    nEven: '(n par)',
+    nOdd: '(n impar)',
+    add: 'Mostrar pasos',
+    reset: 'Reiniciar',
+    cases: 'Casos',
+    saveLatestCase: 'Guardar ultimo caso',
+    latestCaseSaved: 'Ultimo caso guardado',
+    saveLatestCaseDisabled: 'Guardar ultimo caso',
+    saveCaseHelp: 'Guarda aqui el resultado mas reciente o abre Casos para guardar cualquier fila de Resultados recientes.',
+    valueLimitReached: 'LIMITE DE VALOR ALCANZADO',
+    startingValueExceeded: 'El valor inicial {start} supero {max} despues de {steps} pasos',
+    valueLimitExplanation: 'No es un error de entrada. La secuencia siguio creciendo, asi que la app se detuvo cuando cruzo el limite actual de exploracion. Valor maximo alcanzado: {maxValue}.',
+    continue: 'CONTINUAR',
+    resetLayout: 'Restablecer diseno',
+    dragHelp: 'Arrastra cualquier bola numerica para fijarla en su lugar. Restablecer diseno libera los nodos fijados y deja que el diseno se acomode otra vez.',
+    showCycles: 'Mostrar ciclos',
+    cycleLayoutHelp: 'Organiza automaticamente los nodos de ciclo en grupos separados para facilitar el analisis.',
+    layoutHeader: 'Diseño',
+    layoutSpread: 'Disperso',
+    layoutSpreadHelp: 'El grafo elástico por defecto — los círculos se separan, las flechas acercan los conectados.',
+    layoutPolygon: 'Polígono',
+    layoutPolygonHelp: 'Coloca el ciclo como un polígono regular, en el orden en que la secuencia visita sus valores.',
+    layoutStar: 'Estrella',
+    layoutStarHelp: 'Coloca el ciclo como un polígono estrellado {N/k} — conecta cada k-ésimo valor en vez del siguiente.',
+    layoutSorted: 'Ordenado',
+    layoutSortedHelp: 'Coloca el ciclo en círculo por tamaño: el más pequeño arriba, creciendo en sentido horario.',
+    layoutParity: 'Por paridad',
+    layoutParityHelp: 'Coloca el ciclo con los valores impares en la mitad superior del círculo y los pares en la inferior.',
+    colorPrimesLabel: 'Color para primos',
+    colorPrimesHelp: 'Da a los números primos (2, 3, 5, 7, 11, …) su propio color para que destaquen del resto.',
+    view: 'Vista',
+    aboutAppHelp: 'Haz clic para ver información sobre la app en GitHub. (Usa el botón Atrás del navegador para volver aquí.)',
+    stepNumbersLabel: 'Mostrar números de paso',
+    stepNumbersHelp: 'Etiqueta cada círculo con su lugar en la secuencia: 0 es tu valor inicial, 1 es el siguiente número, 2 es el de después, y así sucesivamente.',
+    parityLabel: 'Color por paridad',
+    parityHelp: 'Colorea cada número según si es par o impar — los pares en azul, los impares en naranja.',
+    fit: 'Ajustar',
+    fitHelp: 'Ajusta todo el grafo al lienzo (o haz doble clic en el lienzo).',
+    resetViewHelp: 'Restablece el zoom y el desplazamiento al 100%.',
+    zoomIn: 'Acercar',
+    zoomOut: 'Alejar',
+    grid: 'Cuadricula',
+    lightTheme: 'Tema claro',
+    close: 'Cerrar',
+    recentResults: 'Resultados recientes',
+    savedCases: 'Casos guardados',
+    casesExplanation: 'Resultados recientes se llena automaticamente cada vez que agregas un valor inicial. Casos guardados contiene los ejemplos que el estudiantado decide conservar para buscar patrones.',
+    start: 'Inicio',
+    outcome: 'Resultado',
+    steps: 'Pasos',
+    peak: 'Maximo',
+    keep: 'Guardar',
+    noResultsYet: 'Todavia no hay resultados. Agrega un valor inicial para crear un caso.',
+    save: 'Guardar',
+    saved: 'Guardado',
+    clearSaved: 'Borrar guardados',
+    remove: 'Quitar',
+    noSavedCasesYet: 'Todavia no hay casos guardados. Guarda algunos ejemplos interesantes de Resultados recientes para comparar patrones.',
+    enterApiKey: 'Ingresa tu clave API de Athena (OpenRouter o DeepSeek):',
+    saveKey: 'Guardar clave',
+    getApiKeysAt: 'Consigue claves en',
+    noKey: 'sin clave',
+    changeKey: 'Cambiar clave',
+    keyDetected: 'Detectado: {provider}',
+    zhengThinking: 'Athena esta pensando...',
+    downloadChat: 'Descargar chat',
+    askZheng: 'Preguntale a Athena...',
+    send: 'Enviar',
+    aiSetup: 'Configuración de IA',
+    clearChat: 'Limpiar',
+    askModel: 'Pregúntale a {model}…',
+    askNoModel: 'Elige un modelo en 🤖 Configuración de IA',
+    dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
+    gridWindow: 'VENTANA DE CUADRICULA',
+    startAt: 'Empezar en',
+    findLabel: 'Buscar',
+    findHelp: 'Escribe un valor y pulsa Enter — la cuadrícula salta a su bloque de 100 y resalta esa casilla.',
+    blocks: 'Bloques',
+    usePreviousNext: 'Usa Anterior/Siguiente para mover la ventana visible.',
+    previous: 'Anterior',
+    next: 'Siguiente',
+    recentStarts: 'INICIOS RECIENTES',
+    largeValuesAppear: 'Los valores iniciales grandes apareceran aqui y en la tabla.',
+    useGridControls: 'Usa los controles de la ventana para saltar a cualquier lugar. Los valores grandes siguen visibles en Inicios recientes y en la tabla.',
+    colorScale: 'Escala de color:',
+    green: 'verde',
+    yellow: 'amarillo',
+    orange: 'naranja',
+    red: 'rojo',
+    greenShows: 'El verde muestra valores mas pequenos; el rojo muestra valores mas grandes.',
+    glowingNodes: 'Los nodos brillantes marcan valores de ciclo detectados.',
+    visibleSteps: 'Pasos visibles',
+    maxSteps: 'pasos máx',
+    stepsHelp: 'Controla cuantos pasos de cada secuencia se muestran. Aumenta para ver repeticiones de ciclo, disminuye para ver solo los primeros pasos.',
+    addValueTitle: 'Agregar {value}',
+    startLimitAbove: 'Los valores iniciales mayores que {limit} estan fuera del rango confiable de la app.',
+    startLimitUnsafe: 'Ese valor es mas grande de lo que JavaScript puede seguir de forma confiable como entero exacto.',
+    startLimitInvalid: 'Ingresa un numero entero positivo dentro del rango permitido.',
+    transcriptTitle: 'TRANSCRIPCION DE ORBIT EXPLORER',
+    transcriptDate: 'Fecha/Hora',
+    transcriptParameters: 'Parametros',
+    transcriptNumbersExplored: 'Valores explorados',
+    transcriptSummary: 'RESUMEN DE EXPLORACION',
+    transcriptConversation: 'CONVERSACION CON Athena',
+    transcriptEnd: 'Fin de la transcripcion',
+    chatGreeting: 'Hola. Estoy aqui para ayudarte a pensar sobre lo que estas descubriendo. Que patrones notas en tus secuencias?',
+    outcomes: {
+      converge: 'converge -> 1',
+      cycle: 'entra en ciclo',
+      diverge: 'diverge',
+      noninteger: 'no entero',
+      timeout: 'se agoto el tiempo',
+    },
+  },
+  'zh-Hans': {
+    appName: 'Orbit Explorer',
+    language: '语言',
+    singleStartValue: '输入一个值，按 Enter 键',
+    nEven: '(偶数)',
+    nOdd: '(奇数)',
+    add: '显示步骤',
+    reset: '重置',
+    cases: '案例',
+    saveLatestCase: '保存最新案例',
+    latestCaseSaved: '最新案例已保存',
+    saveLatestCaseDisabled: '保存最新案例',
+    saveCaseHelp: '在这里保存最新结果，或者打开“案例”保存“最近结果”中的任意一行。',
+    valueLimitReached: '达到数值上限',
+    startingValueExceeded: '起始值 {start} 在 {steps} 步后超过了 {max}',
+    valueLimitExplanation: '这不是输入错误。序列持续增长，所以程序在超过当前探索上限时停止。达到的最大值是 {maxValue}。',
+    continue: '继续',
+    resetLayout: '重置布局',
+    dragHelp: '拖动任意数字球即可将它固定在当前位置。重置布局会释放固定节点，并让布局重新整理。',
+    showCycles: '显示循环',
+    cycleLayoutHelp: '自动将循环节点排列成独立的组以便于分析。',
+    layoutHeader: '布局',
+    layoutSpread: '散开',
+    layoutSpreadHelp: '默认的弹性图——圆圈互相推开，箭头把相连的拉到一起。',
+    layoutPolygon: '多边形',
+    layoutPolygonHelp: '按序列访问各值的顺序，把循环排成一个正多边形。',
+    layoutStar: '星形',
+    layoutStarHelp: '把循环排成星形多边形 {N/k}——每隔 k 个值连一条线，而不是连下一个。',
+    layoutSorted: '排序',
+    layoutSortedHelp: '按大小把循环排在一个圆上：最小的在顶部，顺时针递增。',
+    layoutParity: '按奇偶分',
+    layoutParityHelp: '把循环排成：奇数值在圆的上半部分，偶数值在下半部分。',
+    colorPrimesLabel: '为质数着色',
+    colorPrimesHelp: '给质数（2、3、5、7、11……）一个专属颜色，让它们从其他数字中突显出来。',
+    view: '视图',
+    aboutAppHelp: '点击在 GitHub 上查看关于此应用的信息。（用浏览器的“后退”按钮返回这里。）',
+    stepNumbersLabel: '显示步数编号',
+    stepNumbersHelp: '为每个圆圈标注它在序列中的位置：0 是你的起始值，1 是下一个数字，2 是再下一个，依此类推。',
+    parityLabel: '按奇偶着色',
+    parityHelp: '按数字是偶数还是奇数给它上色——偶数为蓝色，奇数为橙色。',
+    fit: '适应',
+    fitHelp: '把整个图形放进画布（也可以双击画布）。',
+    resetViewHelp: '把缩放和平移重置为 100%。',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    grid: '网格',
+    lightTheme: '浅色主题',
+    close: '关闭',
+    recentResults: '最近结果',
+    savedCases: '已保存案例',
+    casesExplanation: '每次添加起始值时，“最近结果”都会自动更新。“已保存案例”用于保留学生想比较的有趣例子。',
+    start: '起始值',
+    outcome: '结果',
+    steps: '步数',
+    peak: '峰值',
+    keep: '保存',
+    noResultsYet: '还没有结果。先添加一个起始值来生成案例。',
+    save: '保存',
+    saved: '已保存',
+    clearSaved: '清空已保存',
+    remove: '删除',
+    noSavedCasesYet: '还没有保存的案例。请从“最近结果”中保存几个有趣的例子来比较模式。',
+    enterApiKey: '输入你的 Athena API 密钥（OpenRouter 或 DeepSeek）：',
+    saveKey: '保存密钥',
+    getApiKeysAt: '可在此获取密钥：',
+    noKey: '无密钥',
+    changeKey: '更改密钥',
+    keyDetected: '已识别：{provider}',
+    zhengThinking: 'Athena 正在思考……',
+    downloadChat: '下载聊天记录',
+    askZheng: '向 Athena 提问……',
+    send: '发送',
+    aiSetup: 'AI 设置',
+    clearChat: '清除',
+    askModel: '向 {model} 提问……',
+    askNoModel: '通过 🤖 AI 设置选择模型',
+    dataReferenceGrids: '参考网格',
+    gridWindow: '网格窗口',
+    startAt: '起始于',
+    findLabel: '查找',
+    findHelp: '输入一个值并按 Enter——网格会跳到包含它的那个 100 区块，并圈出那个格子。',
+    blocks: '区块数',
+    usePreviousNext: '使用“上一页/下一页”移动当前可见窗口。',
+    previous: '上一页',
+    next: '下一页',
+    recentStarts: '最近起始值',
+    largeValuesAppear: '较大的起始值会显示在这里以及表格中。',
+    useGridControls: '使用网格窗口控件可跳转到任意位置。较大的数值会继续显示在“最近起始值”和表格中。',
+    colorScale: '颜色刻度：',
+    green: '绿色',
+    yellow: '黄色',
+    orange: '橙色',
+    red: '红色',
+    greenShows: '绿色表示较小的数值；红色表示较大的数值。',
+    glowingNodes: '发光节点表示检测到的循环数值。',
+    visibleSteps: '可见步数',
+    maxSteps: '最大步数',
+    stepsHelp: '控制每个序列显示多少步。增加以查看循环重复，减少以仅查看早期步骤。',
+    addValueTitle: '添加 {value}',
+    startLimitAbove: '大于 {limit} 的起始值超出了本程序的可靠范围。',
+    startLimitUnsafe: '这个值已经大到 JavaScript 无法可靠地精确表示为整数。',
+    startLimitInvalid: '请输入可靠范围内的正整数。',
+    transcriptTitle: 'ORBIT EXPLORER 聊天记录',
+    transcriptDate: '日期/时间',
+    transcriptParameters: '参数',
+    transcriptNumbersExplored: '已探索的起始值数量',
+    transcriptSummary: '探索摘要',
+    transcriptConversation: '与 Athena 的对话',
+    transcriptEnd: '记录结束',
+    chatGreeting: '你好。我会帮助你思考自己发现了什么。你在这些序列中注意到了哪些模式？',
+    outcomes: {
+      converge: '收敛到 1',
+      cycle: '进入循环',
+      diverge: '发散',
+      noninteger: '非整数',
+      timeout: '超时',
+    },
+  },
+};
+const THEME_PRESETS = {
+  dark: {
+    pageBg: '#131e3a',
+    topBarBg: '#0d1528',
+    panelBg: '#0a1020',
+    panelBgAlt: '#0f1a2a',
+    surfaceBg: '#162040',
+    surfaceBgMuted: '#101a31',
+    textPrimary: '#ffffff',
+    textSecondary: '#99bbee',
+    textMuted: '#7f93b0',
+    titleText: '#7aaaf0',
+    border: '#1e2f55',
+    borderStrong: '#3355aa',
+    overlayBg: 'rgba(10, 20, 40, 0.92)',
+    overlayBgSoft: 'rgba(10, 20, 40, 0.82)',
+    canvasBg: '#131e3a',
+    canvasGrid: 'rgba(40,60,100,0.4)',
+    canvasEdge: 'rgba(80, 140, 220, 0.5)',
+    canvasEdgeHead: 'rgba(80, 140, 220, 0.8)',
+    canvasWatermark: 'rgba(255,255,255,0.9)',
+    canvasAnnotation: 'rgba(255,255,255,0.82)',
+  },
+  light: {
+    pageBg: '#eef4ff',
+    topBarBg: '#dde9ff',
+    panelBg: '#f7faff',
+    panelBgAlt: '#edf3ff',
+    surfaceBg: '#ffffff',
+    surfaceBgMuted: '#e7efff',
+    textPrimary: '#11233f',
+    textSecondary: '#2b4f82',
+    textMuted: '#536c92',
+    titleText: '#2d62a8',
+    border: '#bdd0ef',
+    borderStrong: '#7399d9',
+    overlayBg: 'rgba(245, 249, 255, 0.94)',
+    overlayBgSoft: 'rgba(235, 243, 255, 0.9)',
+    canvasBg: '#f4f8ff',
+    canvasGrid: 'rgba(150,175,215,0.55)',
+    canvasEdge: 'rgba(70, 110, 185, 0.55)',
+    canvasEdgeHead: 'rgba(70, 110, 185, 0.82)',
+    canvasWatermark: 'rgba(24,46,84,0.82)',
+    canvasAnnotation: 'rgba(24,46,84,0.72)',
+  },
+};
+
+function interpolate(template, values) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? '');
+}
+
+function translate(language, key, values) {
+  const source = TRANSLATIONS[language] || TRANSLATIONS.en;
+  const fallback = TRANSLATIONS.en;
+  const result = key.split('.').reduce((acc, part) => acc && acc[part], source)
+    ?? key.split('.').reduce((acc, part) => acc && acc[part], fallback)
+    ?? key;
+  return values ? interpolate(result, values) : result;
+}
+
+function buildSystemPrompt(language) {
+  const responseLanguage = RESPONSE_LANGUAGE_NAMES[language] || RESPONSE_LANGUAGE_NAMES.en;
+  return `You are a math-curious thinking partner sitting beside a student who is exploring an interactive sequence-explorer app. Be honest about what underlying model powers you if asked — don't claim a persona you weren't given. The student is testing starting numbers under a rule of the form f(n) = n/d when n is even, or f(n) = m·n + b when n is odd. They watch the trajectory unfold as a graph and can change the parameters m, b, and d.
+
+You only know what they tell you. You cannot see their graph, parameters, or which starts they've tried — so when they ask vague questions, gently ask them to describe what they're noticing first.
+
+Your way is to wonder alongside them. You ask one short question at a time, two or three sentences total. You never compute a sequence yourself; the app does that instantly. You never predict an outcome; you invite them to test it and report back. If they push you to "just tell me," you decline kindly and point them toward an experiment they could run. You never mention Collatz by name — let them find it.
+
+Respond in ${responseLanguage}.`;
+}
+
+function formatValue(value) {
+  return Number.isFinite(value) ? value.toLocaleString() : String(value);
+}
+
+// Memoized primality test (trial division) — used by the "Color primes" View option.
+const _primeCache = new Map();
+function isPrime(n) {
+  if (!Number.isInteger(n) || n < 2) return false;
+  const cached = _primeCache.get(n);
+  if (cached !== undefined) return cached;
+  let result = true;
+  if (n % 2 === 0) result = (n === 2);
+  else {
+    for (let i = 3; i * i <= n; i += 2) { if (n % i === 0) { result = false; break; } }
+  }
+  _primeCache.set(n, result);
+  return result;
+}
+
+function measureSegmentWidth(ctx, text) {
+  return ctx.measureText(text).width;
+}
+
+function drawCenteredSegments(ctx, centerX, y, segments) {
+  const totalWidth = segments.reduce((sum, segment) => sum + measureSegmentWidth(ctx, segment.text), 0);
+  let cursorX = centerX - totalWidth / 2;
+  for (const segment of segments) {
+    ctx.fillStyle = segment.color;
+    ctx.fillText(segment.text, cursorX, y);
+    cursorX += measureSegmentWidth(ctx, segment.text);
+  }
+}
+
+function getSegmentsWidth(ctx, segments) {
+  return segments.reduce((sum, segment) => sum + measureSegmentWidth(ctx, segment.text), 0);
+}
+
+function drawFormulaLine(ctx, centerX, y, equationSegments, annotation, annotationColor, gap) {
+  const equationWidth = getSegmentsWidth(ctx, equationSegments);
+  const annotationWidth = measureSegmentWidth(ctx, annotation);
+  const totalWidth = equationWidth + gap + annotationWidth;
+  let cursorX = centerX - totalWidth / 2;
+
+  for (const segment of equationSegments) {
+    ctx.fillStyle = segment.color;
+    ctx.fillText(segment.text, cursorX, y);
+    cursorX += measureSegmentWidth(ctx, segment.text);
+  }
+
+  cursorX += gap;
+  ctx.fillStyle = annotationColor;
+  ctx.fillText(annotation, cursorX, y);
+}
+
+function clampNodePosition(value, radius, max) {
+  return Math.max(radius + 2, Math.min(max - radius - 2, value));
+}
+
+function getNodeRadius(position, startNodes, now) {
+  const elapsed  = (now - position.birthTime) / 1000;
+  const popScale = 1 + 2.2 * Math.exp(-elapsed * 2.8);
+  const baseR    = startNodes.has(position.value) ? START_R : NODE_R;
+  return baseR * popScale;
+}
+
+function findNodeAt(nodes, startNodes, x, y, now) {
+  const entries = [...nodes.entries()].reverse();
+  for (const [value, position] of entries) {
+    position.value = value;
+    const radius = getNodeRadius(position, startNodes, now);
+    const dx = x - position.x;
+    const dy = y - position.y;
+    if (dx * dx + dy * dy <= radius * radius) {
+      return { value, position, radius };
+    }
+  }
+  return null;
+}
+
+function normalizeIntegerInput(value) {
+  return String(value ?? '').replace(/[,_\s]/g, '');
+}
+
+function parseSingleStartInput(rawValue) {
+  const normalized = normalizeIntegerInput(rawValue);
+  if (!normalized) return { kind: 'empty' };
+  if (!/^\d+$/.test(normalized)) return { kind: 'invalid' };
+
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value)) return { kind: 'unsafe', value };
+  if (value <= 0) return { kind: 'invalid' };
+  if (value > RELIABLE_START_LIMIT) return { kind: 'above-limit', value };
+
+  return { kind: 'ok', value };
+}
+
+function getStartLimitWarning(rawValue, language) {
+  const parsed = parseSingleStartInput(rawValue);
+  if (parsed.kind === 'above-limit') {
+    return translate(language, 'startLimitAbove', { limit: formatValue(RELIABLE_START_LIMIT) });
+  }
+  if (parsed.kind === 'unsafe') {
+    return translate(language, 'startLimitUnsafe');
+  }
+  return '';
+}
+
+// ── Sequence computation ──────────────────────────────────────────────────────
+function computeSeq(start, m, a, d) {
+  const seq    = [start];
+  const seen   = new Map([[start, 0]]);
+  let n = start;
+  let maxValue = start;
+
+  for (let i = 0; i < MAX_ITER; i++) {
+    let next;
+    if (n % 2 === 0) {
+      next = n / d;
+    } else {
+      next = m * n + a;
+    }
+    maxValue = Math.max(maxValue, next);
+    if (!Number.isInteger(next) || next <= 0)
+      return { seq, outcome: 'noninteger', cycleAt: -1, maxValue };
+    if (next > MAX_VAL) {
+      seq.push(next);
+      return { seq, outcome: 'diverge', cycleAt: -1, maxValue };
+    }
+    seq.push(next);
+    if (seen.has(next)) {
+      const cycleAt = seen.get(next);
+      return { seq, outcome: next === 1 ? 'converge' : 'cycle', cycleAt, maxValue };
+    }
+    seen.set(next, seq.length - 1);
+    n = next;
+  }
+  return { seq, outcome: 'timeout', cycleAt: -1, maxValue };
+}
+
+// ── Color by log(value) ──────────────────────────────────────────────────────
+function valColor(v) {
+  const t = Math.min(1, Math.log10(Math.max(1, Math.abs(v))) / 3.5);
+  const stops = [
+    [0,   [90,  210, 120]],
+    [0.3, [180, 215,  55]],
+    [0.6, [250, 145,  25]],
+    [1.0, [235,  45,  45]],
+  ];
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const s = (t - stops[i-1][0]) / (stops[i][0] - stops[i-1][0]);
+      const c = stops[i-1][1].map((x, j) => Math.round(x + s * (stops[i][1][j] - x)));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return 'rgb(235,45,45)';
+}
+
+// ── Force-directed physics ───────────────────────────────────────────────────
+function physicsStep(nodes, edges, W, H) {
+  const vals = [...nodes.keys()];
+  const fx = {}, fy = {};
+  for (const v of vals) { fx[v] = 0; fy[v] = 0; }
+
+  // Repulsion between all node pairs
+  for (let i = 0; i < vals.length; i++) {
+    for (let j = i + 1; j < vals.length; j++) {
+      const a = nodes.get(vals[i]), b = nodes.get(vals[j]);
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy + 1;
+      const f  = 5000 / d2;
+      const d  = Math.sqrt(d2);
+      fx[vals[i]] += f * dx / d;  fy[vals[i]] += f * dy / d;
+      fx[vals[j]] -= f * dx / d;  fy[vals[j]] -= f * dy / d;
+    }
+  }
+
+  // Spring attraction along edges
+  const L0 = 85; // natural spring length
+  for (const { from, to } of edges) {
+    if (!nodes.has(from) || !nodes.has(to)) continue;
+    const nf = nodes.get(from), nt = nodes.get(to);
+    const dx = nt.x - nf.x, dy = nt.y - nf.y;
+    const d  = Math.sqrt(dx * dx + dy * dy) + 0.1;
+    const f  = 0.05 * (d - L0);
+    fx[from] += f * dx / d;  fy[from] += f * dy / d;
+    fx[to]   -= f * dx / d;  fy[to]   -= f * dy / d;
+  }
+
+  // Gentle gravity toward center
+  for (const v of vals) {
+    const n = nodes.get(v);
+    fx[v] += 0.018 * (W / 2 - n.x);
+    fy[v] += 0.018 * (H / 2 - n.y);
+  }
+
+  // Euler integration with damping
+  const damp = 0.83;
+  for (const v of vals) {
+    const n  = nodes.get(v);
+    if (n.pinned || n.dragging) {
+      n.vx = 0;
+      n.vy = 0;
+      n.x = clampNodePosition(n.x, NODE_R, W);
+      n.y = clampNodePosition(n.y, NODE_R, H);
+      continue;
+    }
+    n.vx = (n.vx + fx[v]) * damp;
+    n.vy = (n.vy + fy[v]) * damp;
+    n.x  = Math.max(NODE_R + 2, Math.min(W - NODE_R - 2, n.x + n.vx));
+    n.y  = Math.max(NODE_R + 2, Math.min(H - NODE_R - 2, n.y + n.vy));
+  }
+}
+
+// ── Cycle Layout ─────────────────────────────────────────────────────────────
+// Walk a single cycle in trajectory order: start at the cycle's entry point and follow
+// the unique outgoing edge that stays inside the cycle until it loops back.
+function walkCycle(cycleVals, cycleNodes, edges) {
+  if (cycleVals.length === 0) return [];
+  const next = new Map();
+  for (const e of edges) {
+    if (cycleNodes.has(e.from) && cycleNodes.has(e.to) && !next.has(e.from)) next.set(e.from, e.to);
+  }
+  const order = [];
+  const seen = new Set();
+  let cur = cycleVals[0]; // cyclesRef is built in trajectory order, so [0] is the cycle's entry point
+  while (cur !== undefined && !seen.has(cur)) { order.push(cur); seen.add(cur); cur = next.get(cur); }
+  for (const v of cycleVals) if (!seen.has(v)) order.push(v); // safety net (shouldn't happen)
+  return order;
+}
+
+// Cycle-layout modes. The cycle's N values are placed around a circle; the modes differ only
+// in the ordering/grouping of those points. Path-to-cycle nodes go in a grid below the circle.
+// The trajectory edges are drawn elsewhere, so they trace the circle's perimeter (Polygon) or
+// criss-cross the interior (Sorted / Parity-split).
+function applyCycleLayout(nodes, edges, cycleNodes, W, H, mode = 'polygon') {
+  const cx = W / 2;
+  const cycleVals = [...cycleNodes].filter(v => nodes.has(v));
+  const nonCycleVals = [...nodes.keys()].filter(v => !cycleNodes.has(v));
+
+  let cycleBottomY = 90; // y just below the cycle circle (where the path grid starts)
+  if (cycleVals.length > 0) {
+    const N = cycleVals.length;
+    const radius = Math.max(70, Math.min(Math.min(W, H) * 0.34, 26 + N * 22));
+    const cyCenterY = 90 + radius; // circle top ~y=90
+
+    if (mode === 'parity') {
+      const odds  = cycleVals.filter(v => v % 2 !== 0).sort((a, b) => a - b);
+      const evens = cycleVals.filter(v => v % 2 === 0).sort((a, b) => a - b);
+      // odds along the top half (θ: π→0, i.e. 9 o'clock through 12 to 3); evens along the bottom (π→2π).
+      const placeArc = (vals, t0, t1) => vals.forEach((v, i) => {
+        const node = nodes.get(v); if (!node) return;
+        const t = vals.length === 1 ? (t0 + t1) / 2 : t0 + (t1 - t0) * (i + 1) / (vals.length + 1);
+        node.x = cx + radius * Math.cos(t);
+        node.y = cyCenterY - radius * Math.sin(t);
+        node.vx = 0; node.vy = 0;
+      });
+      placeArc(odds, Math.PI, 0);
+      placeArc(evens, Math.PI, 2 * Math.PI);
+    } else {
+      const order = (mode === 'sorted') ? [...cycleVals].sort((a, b) => a - b) : walkCycle(cycleVals, cycleNodes, edges);
+      order.forEach((v, i) => {
+        const node = nodes.get(v); if (!node) return;
+        const t = Math.PI / 2 - (i / order.length) * 2 * Math.PI; // start at 12 o'clock, go clockwise
+        node.x = cx + radius * Math.cos(t);
+        node.y = cyCenterY - radius * Math.sin(t);
+        node.vx = 0; node.vy = 0;
+      });
+    }
+    cycleBottomY = cyCenterY + radius + 50;
+  }
+
+  // Path-to-cycle (non-cycle) nodes — a compact grid below the circle.
+  if (nonCycleVals.length > 0) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nonCycleVals.length)));
+    const spacing = Math.min(95, Math.max(60, (W - 120) / cols));
+    const startY = (cycleVals.length > 0) ? cycleBottomY : 110;
+    nonCycleVals.forEach((v, i) => {
+      const node = nodes.get(v); if (!node) return;
+      const row = Math.floor(i / cols), col = i % cols;
+      node.x = cx - ((cols - 1) * spacing) / 2 + col * spacing;
+      node.y = startY + row * spacing;
+      node.vx = 0; node.vy = 0;
+    });
+  }
+
+  // Vertically center the whole arrangement in the canvas.
+  let minY = Infinity, maxY = -Infinity;
+  for (const node of nodes.values()) {
+    if (node.y < minY) minY = node.y;
+    if (node.y > maxY) maxY = node.y;
+  }
+  if (Number.isFinite(minY)) {
+    const dy = H / 2 - (minY + maxY) / 2;
+    for (const node of nodes.values()) node.y += dy;
+  }
+}
+
+// ── Canvas rendering ─────────────────────────────────────────────────────────
+function drawGraph(canvas, nodes, edges, cycleNodes, startNodes, now, m, a, d, hoveredNode, theme, showGrid, view = { scale: 1, x: 0, y: 0 }, language = 'en', opts = {}) {
+  if (!canvas) return;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const { showStepNumbers = false, parityColoring = false, colorPrimes = false, stepIndex = null } = opts;
+  const PARITY_ODD = '#e67e22', PARITY_EVEN = '#3498db'; // View menu: parity coloring (CVD-safe orange/blue)
+  const PRIME_COLOR = '#e040fb'; // View menu: prime highlight (magenta — distinct from gradient/parity)
+
+  // Background
+  ctx.fillStyle = theme.canvasBg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  if (showGrid) {
+    ctx.strokeStyle = theme.canvasGrid;
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+
+  // Formula watermark — a single line along the bottom border, behind the graph
+  const sign = a >= 0 ? '+' : '−';
+  const annotationColor = theme.canvasAnnotation;
+  const formula = [
+    { text: 'f(n) = n / ', color: theme.canvasWatermark },
+    { text: String(d), color: PARAM_COLORS.d },
+    { text: '  ' + translate(language, 'nEven') + '       |       ', color: annotationColor },
+    { text: 'f(n) = ', color: theme.canvasWatermark },
+    { text: String(m), color: PARAM_COLORS.m },
+    { text: 'n ', color: theme.canvasWatermark },
+    { text: sign, color: theme.canvasWatermark },
+    { text: ' ', color: theme.canvasWatermark },
+    { text: String(Math.abs(a)), color: PARAM_COLORS.a },
+    { text: '  ' + translate(language, 'nOdd'), color: annotationColor },
+  ];
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  // Keep clear of the zoom controls in the bottom-left corner: only use the space to their right.
+  const leftReserve = 340;
+  const maxFormulaWidth = Math.max(200, W - leftReserve - 20);
+  let formulaSize = Math.min(Math.round(W / 42), 22);
+  while (formulaSize > 11) {
+    ctx.font = `bold ${formulaSize}px monospace`;
+    if (getSegmentsWidth(ctx, formula) <= maxFormulaWidth) break;
+    formulaSize -= 1;
+  }
+  ctx.font = `bold ${formulaSize}px monospace`;
+  drawCenteredSegments(ctx, (leftReserve + (W - 20)) / 2, H - 12, formula);
+  ctx.restore();
+
+  // ── Zoom/pan transform — everything below (edges, nodes, cycle layout) is in
+  //    world coordinates; the view transform maps world → screen (Revision 6). ──
+  ctx.save();
+  ctx.translate(view.x, view.y);
+  ctx.scale(view.scale, view.scale);
+
+  // Detect bidirectional cycle edges
+  const bidirectional = new Set();
+  for (const { from, to } of edges) {
+    if (cycleNodes.has(from) && cycleNodes.has(to)) {
+      const reverse = edges.find(e => e.from === to && e.to === from);
+      if (reverse) {
+        const key = from < to ? `${from}-${to}` : `${to}-${from}`;
+        bidirectional.add(key);
+      }
+    }
+  }
+
+  // Edges with arrowheads
+  const drawnBidirectional = new Set();
+  for (const { from, to } of edges) {
+    const nf = nodes.get(from), nt = nodes.get(to);
+    if (!nf || !nt) continue;
+    
+    // Check if this is a bidirectional cycle edge
+    const isBidirectional = cycleNodes.has(from) && cycleNodes.has(to) && 
+                            bidirectional.has(from < to ? `${from}-${to}` : `${to}-${from}`);
+    
+    if (isBidirectional) {
+      const key = from < to ? `${from}-${to}` : `${to}-${from}`;
+      if (drawnBidirectional.has(key)) continue; // Already drew this pair
+      drawnBidirectional.add(key);
+      
+      // Draw multiple curved arrows back and forth to show infinite cycle
+      const dx = nt.x - nf.x, dy = nt.y - nf.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) continue;
+      
+      // Perpendicular offset for curve
+      const perpX = -dy / dist;
+      const perpY = dx / dist;
+      
+      // Draw 3 sets of bidirectional curved arrows
+      for (let i = 0; i < 3; i++) {
+        const curve = 25 + i * 8; // Increasing curve amount
+        const alpha = 1 - i * 0.25; // Fade out outer arrows
+        
+        // Forward arrow (from -> to)
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        const midX1 = (nf.x + nt.x) / 2 + perpX * curve;
+        const midY1 = (nf.y + nt.y) / 2 + perpY * curve;
+        ctx.moveTo(nf.x, nf.y);
+        ctx.quadraticCurveTo(midX1, midY1, nt.x, nt.y);
+        ctx.strokeStyle = '#ffcc33'; // Yellow for cycle
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Arrowhead at midpoint pointing to target
+        const t = 0.7;
+        const qx = (1-t)*(1-t)*nf.x + 2*(1-t)*t*midX1 + t*t*nt.x;
+        const qy = (1-t)*(1-t)*nf.y + 2*(1-t)*t*midY1 + t*t*nt.y;
+        const tx = 2*(1-t)*(midX1-nf.x) + 2*t*(nt.x-midX1);
+        const ty = 2*(1-t)*(midY1-nf.y) + 2*t*(nt.y-midY1);
+        const angle1 = Math.atan2(ty, tx);
+        ctx.beginPath();
+        ctx.moveTo(qx, qy);
+        ctx.lineTo(qx - 8 * Math.cos(angle1 - 0.4), qy - 8 * Math.sin(angle1 - 0.4));
+        ctx.lineTo(qx - 8 * Math.cos(angle1 + 0.4), qy - 8 * Math.sin(angle1 + 0.4));
+        ctx.closePath();
+        ctx.fillStyle = '#ffcc33';
+        ctx.fill();
+        
+        // Backward arrow (to -> from)
+        ctx.beginPath();
+        const midX2 = (nf.x + nt.x) / 2 - perpX * curve;
+        const midY2 = (nf.y + nt.y) / 2 - perpY * curve;
+        ctx.moveTo(nt.x, nt.y);
+        ctx.quadraticCurveTo(midX2, midY2, nf.x, nf.y);
+        ctx.strokeStyle = '#ffcc33';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Arrowhead at midpoint pointing back to source
+        const qx2 = (1-t)*(1-t)*nt.x + 2*(1-t)*t*midX2 + t*t*nf.x;
+        const qy2 = (1-t)*(1-t)*nt.y + 2*(1-t)*t*midY2 + t*t*nf.y;
+        const tx2 = 2*(1-t)*(midX2-nt.x) + 2*t*(nf.x-midX2);
+        const ty2 = 2*(1-t)*(midY2-nt.y) + 2*t*(nf.y-midY2);
+        const angle2 = Math.atan2(ty2, tx2);
+        ctx.beginPath();
+        ctx.moveTo(qx2, qy2);
+        ctx.lineTo(qx2 - 8 * Math.cos(angle2 - 0.4), qy2 - 8 * Math.sin(angle2 - 0.4));
+        ctx.lineTo(qx2 - 8 * Math.cos(angle2 + 0.4), qy2 - 8 * Math.sin(angle2 + 0.4));
+        ctx.closePath();
+        ctx.fillStyle = '#ffcc33';
+        ctx.fill();
+        ctx.restore();
+      }
+      continue;
+    }
+    
+    // Regular one-way edge
+    const dx = nt.x - nf.x, dy = nt.y - nf.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) continue;
+
+    const toR = (startNodes.has(to) ? START_R : NODE_R) + 5;
+    const ex = nt.x - (dx / dist) * toR;
+    const ey = nt.y - (dy / dist) * toR;
+
+    ctx.beginPath();
+    ctx.moveTo(nf.x, nf.y);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = theme.canvasEdge;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Arrowhead
+    const angle = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 9 * Math.cos(angle - 0.45), ey - 9 * Math.sin(angle - 0.45));
+    ctx.lineTo(ex - 9 * Math.cos(angle + 0.45), ey - 9 * Math.sin(angle + 0.45));
+    ctx.closePath();
+    ctx.fillStyle = theme.canvasEdgeHead;
+    ctx.fill();
+  }
+
+  // Nodes
+  for (const [val, pos] of nodes) {
+    const isCycle  = cycleNodes.has(val);
+    const isStart  = startNodes.has(val);
+    const isPinned = !!pos.pinned;
+    const isDragging = !!pos.dragging;
+
+    // Pop-in scale: new nodes spawn large and shrink to normal over ~1s
+    const elapsed  = (now - pos.birthTime) / 1000;
+    const popScale = 1 + 2.2 * Math.exp(-elapsed * 2.8);
+    
+    // Breathing animation for start nodes (gentle pulse)
+    const breathe = isStart ? 1 + 0.08 * Math.sin(now / 800) : 1;
+    
+    const baseR    = isStart ? START_R : NODE_R;
+    const r        = baseR * popScale * breathe;
+
+    // Glow for cycle nodes (and starting nodes)
+    if (isCycle || isStart) {
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r + (isStart ? 8 : 6), 0, Math.PI * 2);
+      ctx.fillStyle = isStart
+        ? 'rgba(160, 100, 220, 0.25)'
+        : 'rgba(255, 215, 50, 0.18)';
+      ctx.fill();
+    }
+
+    // (no hover highlight — clicking shows a tooltip instead)
+
+    // Node circle (fill precedence: seed → prime (if "Color primes") → parity (if "Parity coloring") → value gradient)
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = isStart ? '#9b5fc0'
+                  : (colorPrimes && isPrime(val)) ? PRIME_COLOR
+                  : parityColoring ? (val % 2 === 0 ? PARITY_EVEN : PARITY_ODD)
+                  : valColor(val);
+    ctx.fill();
+    ctx.strokeStyle = isDragging ? 'rgba(255,255,255,0.98)'
+            : isPinned  ? 'rgba(170,230,255,0.98)'
+            : isCycle   ? 'rgba(255,215,50,0.9)'
+            : isStart   ? 'rgba(180,130,230,0.95)'
+            : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth   = isDragging ? 3.5 : (isPinned || isCycle || isStart) ? 2.5 : 1;
+    ctx.stroke();
+
+    // Label — scale font with node size
+    const label = val > 9999 ? String(val).slice(0, 4) + '…' : String(val);
+    const fs    = Math.max(8, Math.min(14, Math.round(r * 0.75)));
+    ctx.fillStyle    = 'black';
+    ctx.font         = `bold ${fs}px monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, pos.x, pos.y);
+
+    // Step-index badge (View menu: "Show step numbers") — small bubble at the node's upper-right
+    if (showStepNumbers && stepIndex && stepIndex.has(val)) {
+      const si = stepIndex.get(val);
+      const br = Math.max(8, r * 0.5);
+      const bx = pos.x + r * 0.78, by = pos.y - r * 0.78;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = theme.panelBg;
+      ctx.fill();
+      ctx.strokeStyle = theme.borderStrong;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = theme.textPrimary;
+      ctx.font = `bold ${Math.max(8, Math.round(br * 1.05))}px monospace`;
+      ctx.fillText(String(si), bx, by);
+    }
+  }
+
+  ctx.restore(); // end zoom/pan transform
+}
+
+// ── Outcome badge ────────────────────────────────────────────────────────────
+const OUTCOME_COLOR = {
+  converge:   '#55dd77',
+  cycle:      '#ffcc33',
+  diverge:    '#ff7755',
+  noninteger: '#9999aa',
+  timeout:    '#9999aa',
+};
+const OUTCOME_LABEL = {
+  converge:   'converges → 1',
+  cycle:      'enters cycle',
+  diverge:    'diverges',
+  noninteger: 'non-integer',
+  timeout:    'timed out',
+};
+
+// ── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const GRID_BLOCK_SIZE = 100;
+
+  // Read URL params: ?m=5&b=1&d=2 (legacy ?a= still supported)
+  const sp = new URLSearchParams(window.location.search);
+  const urlM = sp.get('m');
+  const urlA = sp.get('b') ?? sp.get('a');
+  const urlD = sp.get('d');
+
+  const seed   = parseInt(sp.get('seed') ?? '27');
+  const urlKey = sp.get('key') ?? '';
+
+  const [m, setM]           = useState(parseInt(urlM ?? '3'));
+  const [a, setA]           = useState(parseInt(urlA ?? '-1'));
+  const [d, setD]           = useState(parseInt(urlD ?? '2'));
+  // ── AI provider + key state (single source of truth: localStorage via helpers above)
+  const [aiProvider, setAiProvider] = useState(() => getStoredProvider());
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  // Filter out any localStorage entries that aren't valid URLs — defends against
+  // earlier versions of the app that accepted accidental key paste.
+  const [localEndpoints, setLocalEndpoints] = useState(() => {
+    const raw = getStoredLocalEndpoints();
+    const clean = raw.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+    if (clean.length !== raw.length) setStoredLocalEndpoints(clean);
+    return clean;
+  });
+  const [localModelsByEndpoint, setLocalModelsByEndpoint] = useState({});  // { url: [{id, label}] }
+  const [showAddEndpoint, setShowAddEndpoint] = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || '');
+  const [showGhInput, setShowGhInput] = useState(false);
+  const [ghSaveStatus, setGhSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [log, setLog]       = useState([]);
+
+  // Physics state lives in refs — no React re-render needed each frame
+  const nodesRef  = useRef(new Map());
+  const edgesRef  = useRef([]);
+  const cyclesRef = useRef(new Set());
+  const startNodesRef = useRef(new Set());
+  const sequencesRef = useRef([]); // Store all explored sequences for step filtering
+  const canvasRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const panRef = useRef(null);          // active background-pan gesture (Revision 6)
+  const viewRef = useRef({ scale: 1, x: 0, y: 0 }); // canvas zoom/pan transform — source of truth, read by the draw loop
+  const fitTimerRef = useRef(null);     // pending debounced auto-fit timer
+  const paramsRef = useRef({ m, a, d });
+  const themeRef = useRef(THEME_PRESETS.dark);
+  const showGridRef = useRef(true);
+  const layoutModeRef = useRef('spread');     // 'spread' (force) | 'polygon' | 'star' | 'sorted' | 'parity'
+  const colorPrimesRef = useRef(false);       // View menu: color prime-valued nodes
+  const langRef = useRef('en'); // kept in sync with `language` so the canvas watermark can translate
+  const showStepNumbersRef = useRef(false);   // View menu: small step-index badges on nodes
+  const parityColoringRef  = useRef(false);   // View menu: color nodes by odd/even
+  const stepIndexRef = useRef(new Map());     // value → first step index in the current trajectory
+  const viewMenuRef = useRef(null);           // the View dropdown panel (for click-outside detection)
+  const rafRef    = useRef(null);
+  const hoveredNodeRef = useRef(null);
+
+  const [overflow, setOverflow] = useState(null);
+  const [showDataTable, setShowDataTable] = useState(false);
+  const [dataTableRect, setDataTableRect] = useState(() => ({
+    top: 60,
+    left: 20,
+    width: Math.max(540, Math.min(window.innerWidth - 360, 1500)),
+    height: Math.max(320, window.innerHeight - 80),
+  }));
+  const [visitedNums, setVisitedNums] = useState(new Set());
+  const [inputWarning, setInputWarning] = useState('');
+  const [savedCases, setSavedCases] = useState([]);
+  const [gridStart, setGridStart] = useState(1);
+  const [gridCount, setGridCount] = useState(4);
+  const [findVal, setFindVal] = useState('');          // Revision 7: data-grid "Find" input
+  const [highlightCell, setHighlightCell] = useState(null); // value to ring in the grid (null = none)
+  const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [layoutMode, setLayoutMode] = useState('spread');
+  const [colorPrimes, setColorPrimes] = useState(false);
+  const [useLightTheme, setUseLightTheme] = useState(false);
+  const [maxVisibleSteps, setMaxVisibleSteps] = useState(50);
+  const [language, setLanguage] = useState(() => localStorage.getItem('orbit_language') || 'en');
+  const [showViewMenu, setShowViewMenu] = useState(false);     // View dropdown open?
+  const [showStepNumbers, setShowStepNumbers] = useState(false);
+  const [parityColoring, setParityColoring] = useState(false);
+  const [zoomPct, setZoomPct] = useState(100); // canvas zoom % shown in the corner control cluster
+  const [chatPanelWidth, setChatPanelWidth] = useState(320);
+  const [saveNudge, setSaveNudge] = useState(null); // {start, ...logEntry} when a new seed cleared an unsaved trajectory; null otherwise
+  const saveNudgeTimerRef = useRef(null);
+  const dataTableDragRef = useRef(null);
+  const dataTablePanelRef = useRef(null);
+  const chatResizeRef = useRef(null);
+
+  // ── Chat state ───────────────────────────────────────────────────────────────
+  const t = (key, values) => translate(language, key, values);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', content: translate(language, 'chatGreeting') }
+  ]);
+  const [chatInput,   setChatInput]   = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
+  // Probe each user-configured local endpoint for OpenAI-compatible /v1/models.
+  // Anything that responds becomes a stack of cards in the AI modal.
+  useEffect(() => {
+    if (!localEndpoints.length) { setLocalModelsByEndpoint({}); return; }
+    const ctrls = [];
+    localEndpoints.forEach(url => {
+      const clean = url.replace(/\/$/, '');
+      const ctrl = new AbortController();
+      ctrls.push(ctrl);
+      const t = setTimeout(() => ctrl.abort(), 2500);
+      fetch(`${clean}/v1/models`, { signal: ctrl.signal })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data?.data) return;
+          const models = data.data.filter(m => m?.id).map(m => ({ id: m.id, label: m.id }));
+          setLocalModelsByEndpoint(prev => ({ ...prev, [url]: models }));
+        })
+        .catch(() => {
+          setLocalModelsByEndpoint(prev => ({ ...prev, [url]: [] }));   // mark as probed but empty
+        })
+        .finally(() => clearTimeout(t));
+    });
+    return () => ctrls.forEach(c => c.abort());
+  }, [localEndpoints]);
+
+  const clampDataTableRect = (rect, viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) => {
+    const minWidth = 540;
+    const minHeight = 320;
+    const maxWidth = Math.max(minWidth, viewportWidth - 24);
+    const maxHeight = Math.max(minHeight, viewportHeight - 24);
+    const width = Math.min(Math.max(rect.width, minWidth), maxWidth);
+    const height = Math.min(Math.max(rect.height, minHeight), maxHeight);
+    const left = Math.min(Math.max(rect.left, 12), Math.max(12, viewportWidth - width - 12));
+    const top = Math.min(Math.max(rect.top, 12), Math.max(12, viewportHeight - height - 12));
+    return { top, left, width, height };
+  };
+
+  const clampChatPanelWidth = (width, viewportWidth = window.innerWidth) => {
+    // Keep enough space for canvas + data grids while allowing wider chat screenshots.
+    const reservedForCanvasAndGrid = 640;
+    const dynamicMax = Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(CHAT_PANEL_MAX_WIDTH, viewportWidth - reservedForCanvasAndGrid));
+    return Math.min(Math.max(width, CHAT_PANEL_MIN_WIDTH), dynamicMax);
+  };
+
+  const startDataTableDrag = (event) => {
+    const target = event.target;
+    if (target.closest('button')) return;
+    event.preventDefault();
+    dataTableDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - dataTableRect.left,
+      offsetY: event.clientY - dataTableRect.top,
+    };
+  };
+
+  const startChatResize = (event) => {
+    event.preventDefault();
+    if (event.currentTarget?.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    chatResizeRef.current = {
+      pointerId: event.pointerId,
+    };
+  };
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      if (dataTableDragRef.current && event.pointerId === dataTableDragRef.current.pointerId) {
+        const { offsetX, offsetY } = dataTableDragRef.current;
+        setDataTableRect(prev => clampDataTableRect({
+          ...prev,
+          left: event.clientX - offsetX,
+          top: event.clientY - offsetY,
+        }));
+      }
+    };
+
+    const handlePointerUp = (event) => {
+      if (dataTableDragRef.current && event.pointerId === dataTableDragRef.current.pointerId) {
+        dataTableDragRef.current = null;
+      }
+    };
+
+    const handleWindowResize = () => {
+      setDataTableRect(prev => clampDataTableRect(prev, window.innerWidth, window.innerHeight));
+    };
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(entries => {
+          const entry = entries[0];
+          if (!entry) return;
+          const { width, height } = entry.contentRect;
+          setDataTableRect(prev => clampDataTableRect({
+            ...prev,
+            width,
+            height,
+          }));
+        })
+      : null;
+
+    if (resizeObserver && dataTablePanelRef.current) {
+      resizeObserver.observe(dataTablePanelRef.current);
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('resize', handleWindowResize);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('resize', handleWindowResize);
+      resizeObserver?.disconnect();
+    };
+  }, [dataTableRect.left, dataTableRect.top]);
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      if (!chatResizeRef.current || event.pointerId !== chatResizeRef.current.pointerId) return;
+      const nextWidth = window.innerWidth - event.clientX;
+      setChatPanelWidth(clampChatPanelWidth(nextWidth));
+    };
+
+    const handlePointerUp = (event) => {
+      if (chatResizeRef.current && event.pointerId === chatResizeRef.current.pointerId) {
+        chatResizeRef.current = null;
+      }
+    };
+
+    const handleWindowResize = () => {
+      setChatPanelWidth(prev => clampChatPanelWidth(prev));
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('resize', handleWindowResize);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('orbit_language', language);
+  }, [language]);
+
+  useEffect(() => {
+    setInputWarning(prev => prev ? getStartLimitWarning(inputVal, language) : prev);
+  }, [language]);
+
+  useEffect(() => {
+    setChatMessages(prev => {
+      if (prev.length !== 1 || prev[0].role !== 'assistant') return prev;
+      return [{ role: 'assistant', content: translate(language, 'chatGreeting') }];
+    });
+  }, [language]);
+
+  // ── Audio feedback for UI clicks ─────────────────────────────────────────────
+  const playClickSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800; // Higher frequency for a click sound
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.05);
+      
+      // Clean up
+      setTimeout(() => audioContext.close(), 100);
+    } catch (e) {
+      // Silently fail if audio context not available
+    }
+  };
+
+  // (saveApiKey / clearApiKey removed — key management is in the AI Setup modal)
+
+  async function saveToGitHub(filename, content) {
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(content)));
+      const res = await fetch(
+        `https://api.github.com/repos/OhioMathTeacher/orbit-explorer/contents/Orbit%20Data/${encodeURIComponent(filename)}`,
+        {
+          method: 'PUT',
+          headers: { 'Authorization': `token ${ghToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Data submission ${filename}`, content: encoded }),
+        }
+      );
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async function downloadChatTranscript() {
+    const now = new Date();
+    const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+    const dateStr = now.toISOString().substring(0, 10);
+    
+    // Create formatted transcript
+    let transcript = `========================================\n`;
+    transcript += `${t('transcriptTitle')}\n`;
+    transcript += `========================================\n\n`;
+    transcript += `${t('transcriptDate')}: ${timestamp}\n`;
+    transcript += `${t('transcriptParameters')}: m=${m}, b=${a}, d=${d}\n`;
+    transcript += `${t('transcriptNumbersExplored')}: ${log.length}\n\n`;
+    
+    if (log.length > 0) {
+      transcript += `${t('transcriptSummary')}:\n`;
+      transcript += `${'─'.repeat(40)}\n`;
+      log.slice().reverse().forEach(entry => {
+        transcript += `  ${entry.start} -> ${t(`outcomes.${entry.outcome}`)} (${entry.steps} ${t('steps').toLowerCase()})\n`;
+      });
+      transcript += `\n`;
+    }
+    
+    transcript += `${t('transcriptConversation')}:\n`;
+    transcript += `${'─'.repeat(40)}\n\n`;
+    
+    chatMessages.forEach((msg, i) => {
+      const speaker = msg.role === 'user' ? 'STUDENT' : 'Athena';
+      transcript += `[${speaker}]\n${msg.content}\n\n`;
+    });
+    
+    transcript += `${'─'.repeat(40)}\n`;
+    transcript += `${t('transcriptEnd')}\n`;
+    
+    // Create download
+    const blob = new Blob([transcript], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.download = `orbit-explorer-chat-${now.toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(url);
+
+    // Save to GitHub if token is configured
+    if (ghToken) {
+      const filename = `orbit-explorer-${now.toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+      setGhSaveStatus('saving');
+      const ok = await saveToGitHub(filename, transcript);
+      setGhSaveStatus(ok ? 'saved' : 'error');
+      setTimeout(() => setGhSaveStatus(null), 4000);
+    }
+  }
+
+  function downloadCasesTable() {
+    const now = new Date();
+    const dateStr = now.toISOString().substring(0, 10);
+    const timestamp = now.toISOString().replace('T', ' ').substring(0, 19);
+    
+    // CSV format for easy import into spreadsheets
+    let csv = `# Orbit Explorer Cases Table\n`;
+    csv += `# Date: ${timestamp}\n`;
+    csv += `# Current Parameters: m=${m}, b=${a}, d=${d}\n\n`;
+    
+    // Saved Cases section
+    if (savedCases.length > 0) {
+      csv += `Saved Cases\n`;
+      csv += `m,b,d,Start,Outcome,Steps,Peak\n`;
+      savedCases.forEach(entry => {
+        csv += `${entry.m},${entry.a},${entry.d},${entry.start},${t(`outcomes.${entry.outcome}`)},${entry.steps},${entry.maxValue}\n`;
+      });
+      csv += `\n`;
+    }
+    
+    // Recent Results section
+    if (log.length > 0) {
+      csv += `Recent Results\n`;
+      csv += `Start,Outcome,Steps,Peak\n`;
+      log.forEach(entry => {
+        csv += `${entry.start},${t(`outcomes.${entry.outcome}`)},${entry.steps},${entry.maxValue}\n`;
+      });
+    }
+    
+    // Create download
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const downloadLink = document.createElement('a');
+    downloadLink.href = url;
+    downloadLink.download = `orbit-explorer-cases-${now.toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(url);
+  }
+
+  function addLocalEndpointFromInput(inputEl) {
+    const raw = inputEl.value.trim();
+    if (!raw) return;
+    // Validation: must be a URL starting with http:// or https://. Refuse
+    // anything that looks like an API key (those start with sk-, gsk_, AIza, etc.)
+    // to prevent the user from accidentally storing a secret here.
+    if (!/^https?:\/\//i.test(raw)) {
+      alert(
+        'Local endpoint must be a URL starting with http:// or https://\n\n' +
+        'If you meant to enter an API key, click a Cloud provider card above first.'
+      );
+      return;
+    }
+    const v = raw.replace(/\/$/, '');
+    if (localEndpoints.includes(v)) { inputEl.value = ''; return; }
+    const next = [...localEndpoints, v];
+    setStoredLocalEndpoints(next);
+    setLocalEndpoints(next);
+    inputEl.value = '';
+  }
+
+  async function sendChat() {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    if (!aiProvider || aiProvider === 'none') {
+      setAiModalOpen(true);
+      return;
+    }
+    const userMsg = { role: 'user', content: text };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setChatLoading(true);
+    try {
+      const reply = await askAI(aiProvider, newMessages, buildSystemPrompt(language));
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply || '(no response)' }]);
+    } catch (e) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: getChatErrorMessage(e, language) }]);
+    }
+    setChatLoading(false);
+  }
+
+
+  useEffect(() => { paramsRef.current = { m, a, d }; }, [m, a, d]);
+  useEffect(() => { langRef.current = language; }, [language]);
+  useEffect(() => { themeRef.current = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark; }, [useLightTheme]);
+  useEffect(() => { showGridRef.current = showGrid; }, [showGrid]);
+  useEffect(() => { showStepNumbersRef.current = showStepNumbers; }, [showStepNumbers]);
+  useEffect(() => { parityColoringRef.current = parityColoring; }, [parityColoring]);
+
+  // Close the View dropdown on outside-click or Escape.
+  useEffect(() => {
+    if (!showViewMenu) return;
+    const onDoc = (e) => { if (viewMenuRef.current && !viewMenuRef.current.contains(e.target)) setShowViewMenu(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setShowViewMenu(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [showViewMenu]);
+  useEffect(() => { colorPrimesRef.current = colorPrimes; }, [colorPrimes]);
+  // Changing the layout repositions every node: snap the view to 100% (so the
+  // rearranged graph isn't stranded off-screen), then auto-fit once it settles.
+  useEffect(() => {
+    layoutModeRef.current = layoutMode;
+    resetView();
+    scheduleAutoFit();
+  }, [layoutMode]);
+
+  // Rebuild graph when maxVisibleSteps changes
+  useEffect(() => {
+    if (sequencesRef.current.length > 0) {
+      rebuildGraphFromSequences();
+    }
+  }, [maxVisibleSteps]);
+
+  // Load one example trajectory on mount (the `seed` URL param, default 27).
+  // Single example because a new seed now replaces the canvas (Revision 4) — no overlay.
+  // addNumberVal schedules its own auto-fit once the layout settles.
+  useEffect(() => {
+    const tid = setTimeout(() => addNumberVal(seed), 300);
+    return () => clearTimeout(tid);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resize canvas to fill its container
+  useEffect(() => {
+    function resize() {
+      const cvs = canvasRef.current;
+      if (!cvs) return;
+      cvs.width  = cvs.offsetWidth;
+      cvs.height = cvs.offsetHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  // Wheel / pinch → zoom (anchored on the graph center, so it just scales in place).
+  // Attached manually because React's onWheel is passive (can't preventDefault).
+  useEffect(() => {
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      zoomCentered(Math.exp(-e.deltaY * 0.0016));
+    };
+    cvs.addEventListener('wheel', onWheel, { passive: false });
+    return () => cvs.removeEventListener('wheel', onWheel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Animation loop
+  useEffect(() => {
+    let alive = true;
+    function tick() {
+      if (!alive) return;
+      const cvs = canvasRef.current;
+      if (cvs && cvs.width > 0) {
+        if (layoutModeRef.current === 'spread') {
+          physicsStep(nodesRef.current, edgesRef.current, cvs.width, cvs.height);
+        } else {
+          applyCycleLayout(nodesRef.current, edgesRef.current, cyclesRef.current, cvs.width, cvs.height, layoutModeRef.current);
+        }
+        drawGraph(cvs, nodesRef.current, edgesRef.current,
+            cyclesRef.current, startNodesRef.current, Date.now(),
+            paramsRef.current.m, paramsRef.current.a, paramsRef.current.d,
+                  hoveredNodeRef.current, themeRef.current, showGridRef.current, viewRef.current, langRef.current,
+                  { showStepNumbers: showStepNumbersRef.current, parityColoring: parityColoringRef.current,
+                    colorPrimes: colorPrimesRef.current, stepIndex: stepIndexRef.current });
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  function rebuildGraphFromSequences() {
+    const cvs = canvasRef.current;
+    const W = cvs?.width  ?? 900;
+    const H = cvs?.height ?? 560;
+    
+    // Clear existing nodes and edges
+    const existingPositions = new Map(nodesRef.current);
+    nodesRef.current = new Map();
+    edgesRef.current = [];
+    cyclesRef.current = new Set();
+    startNodesRef.current = new Set();
+    const stepMap = new Map(); // value → first step index in the displayed trajectory (for the View menu's step badges)
+
+    const now = Date.now();
+
+    // Rebuild from stored sequences
+    for (const seqData of sequencesRef.current) {
+      const { seq, outcome, cycleAt, startVal } = seqData;
+
+      // Extend sequence if it enters a cycle and maxVisibleSteps > seq.length
+      let extendedSeq = [...seq];
+      if ((outcome === 'cycle' || outcome === 'converge') && cycleAt >= 0 && maxVisibleSteps > seq.length) {
+        const cycle = seq.slice(cycleAt);
+        const needed = maxVisibleSteps - seq.length;
+        for (let i = 0; i < needed; i++) {
+          extendedSeq.push(cycle[i % cycle.length]);
+        }
+      }
+
+      const limited = extendedSeq.slice(0, Math.min(maxVisibleSteps, MAX_NODES));
+      for (let i = 0; i < limited.length; i++) {
+        if (!stepMap.has(limited[i])) stepMap.set(limited[i], i);
+      }
+
+      // Mark start node
+      startNodesRef.current.add(startVal);
+      
+      // Add nodes (preserving positions if they exist)
+      for (const v of limited) {
+        if (!nodesRef.current.has(v)) {
+          const existing = existingPositions.get(v);
+          nodesRef.current.set(v, existing || {
+            x:  W / 2 + (Math.random() - 0.5) * 250,
+            y:  H / 2 + (Math.random() - 0.5) * 250,
+            vx: (Math.random() - 0.5) * 3,
+            vy: (Math.random() - 0.5) * 3,
+            birthTime: now,
+            pinned: false,
+            dragging: false,
+          });
+        }
+      }
+      
+      // Add edges (avoid duplicates)
+      const edgeSet = new Set(edgesRef.current.map(e => `${e.from}:${e.to}`));
+      for (let i = 0; i < limited.length - 1; i++) {
+        const key = `${limited[i]}:${limited[i + 1]}`;
+        if (!edgeSet.has(key)) {
+          edgesRef.current.push({ from: limited[i], to: limited[i + 1] });
+          edgeSet.add(key);
+        }
+      }
+      
+      // Mark cycle nodes
+      if ((outcome === 'cycle' || outcome === 'converge') && cycleAt >= 0) {
+        for (let i = cycleAt; i < Math.min(extendedSeq.length, maxVisibleSteps); i++) {
+          cyclesRef.current.add(extendedSeq[i]);
+        }
+      }
+    }
+    stepIndexRef.current = stepMap;
+  }
+
+  // Clear only the trajectory canvas (nodes/edges/cycles/stored sequences).
+  // Leaves the grid highlights, Recent Results, and Saved Cases alone.
+  function clearGraph() {
+    nodesRef.current      = new Map();
+    edgesRef.current      = [];
+    cyclesRef.current     = new Set();
+    startNodesRef.current = new Set();
+    sequencesRef.current  = [];
+    stepIndexRef.current  = new Map();
+    // Reset the zoom/pan view too, so a freshly drawn graph is fully visible.
+    viewRef.current       = { scale: 1, x: 0, y: 0 };
+    setZoomPct(100);
+  }
+
+  function reset() {
+    clearGraph();
+    // Keep log (Recent Results) and savedCases for research data;
+    // the Reset button additionally clears the grid highlights.
+    setVisitedNums(new Set());
+  }
+
+  // Revision 4: when a new seed replaces the canvas, if the trajectory being
+  // cleared was never saved to Cases, briefly surface a soft "save it?" nudge.
+  function maybeNudgeSave() {
+    if (sequencesRef.current.length > 0 && log[0] && !isCaseSaved(log[0])) {
+      if (saveNudgeTimerRef.current) clearTimeout(saveNudgeTimerRef.current);
+      setSaveNudge(log[0]);
+      saveNudgeTimerRef.current = setTimeout(() => setSaveNudge(null), 5000);
+    }
+  }
+
+  function dismissSaveNudge() {
+    if (saveNudgeTimerRef.current) clearTimeout(saveNudgeTimerRef.current);
+    saveNudgeTimerRef.current = null;
+    setSaveNudge(null);
+  }
+
+  function alignGridStart(value) {
+    const safeValue = Math.max(1, parseInt(value || 1, 10) || 1);
+    return Math.floor((safeValue - 1) / GRID_BLOCK_SIZE) * GRID_BLOCK_SIZE + 1;
+  }
+
+  function updateGridStart(value) {
+    setGridStart(alignGridStart(value));
+  }
+
+  // Revision 7: type a value into the grid "Find" box → jump to the block of 100 that
+  // contains it and ring that cell so it's easy to spot.
+  function jumpToBlock() {
+    const n = parseInt(String(findVal).replace(/[,_\s]/g, ''), 10);
+    setFindVal('');
+    if (!Number.isInteger(n) || n < 1 || n > MAX_VAL) return;
+    setGridStart(alignGridStart(n));
+    setHighlightCell(n);
+  }
+
+  function updateGridCount(value) {
+    const next = parseInt(value, 10);
+    if (Number.isNaN(next)) return;
+    setGridCount(Math.max(1, Math.min(20, next)));
+  }
+
+  function focusGridOnValue(value) {
+    const rangeEnd = gridStart + gridCount * GRID_BLOCK_SIZE - 1;
+    if (value < gridStart || value > rangeEnd) {
+      setGridStart(alignGridStart(value));
+    }
+  }
+
+  function changeParam(setter, val) {
+    setter(val);
+    reset();
+  }
+
+  function saveCase(entry) {
+    const key = `${entry.m}:${entry.a}:${entry.d}:${entry.start}:${entry.steps}:${entry.outcome}:${entry.maxValue}`;
+    setSavedCases(prev => {
+      if (prev.some(item => item.key === key)) return prev;
+      return [{ ...entry, key }, ...prev];
+    });
+  }
+
+  function isCaseSaved(entry) {
+    const key = `${entry.m}:${entry.a}:${entry.d}:${entry.start}:${entry.steps}:${entry.outcome}:${entry.maxValue}`;
+    return savedCases.some(item => item.key === key);
+  }
+
+  function removeSavedCase(key) {
+    setSavedCases(prev => prev.filter(entry => entry.key !== key));
+  }
+
+  function resetLayout() {
+    const cvs = canvasRef.current;
+    const W = cvs?.width ?? 900;
+    const H = cvs?.height ?? 560;
+    for (const node of nodesRef.current.values()) {
+      node.pinned = false;
+      node.dragging = false;
+      node.vx = (Math.random() - 0.5) * 2;
+      node.vy = (Math.random() - 0.5) * 2;
+      node.x = clampNodePosition(node.x, NODE_R, W);
+      node.y = clampNodePosition(node.y, NODE_R, H);
+    }
+    dragStateRef.current = null;
+    setIsDraggingNode(false);
+  }
+
+  function getCanvasPoint(event) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  }
+
+  // ── Zoom / pan (Revision 6) ──────────────────────────────────────────────────
+  // Node positions and edges live in "world" coordinates ([0..canvasW]×[0..canvasH]);
+  // viewRef.current = { scale, x, y } maps world → screen: screen = world*scale + (x,y).
+  function screenToWorld(p) {
+    const v = viewRef.current;
+    return { x: (p.x - v.x) / v.scale, y: (p.y - v.y) / v.scale };
+  }
+
+  function cancelAutoFit() {
+    if (fitTimerRef.current) { clearTimeout(fitTimerRef.current); fitTimerRef.current = null; }
+  }
+
+  function resetView() {
+    cancelAutoFit();
+    viewRef.current = { scale: 1, x: 0, y: 0 };
+    setZoomPct(100);
+  }
+
+  // Bounding box of the current node positions (in world coords), padded by `pad`.
+  function nodesBBox(pad = 0) {
+    const nodes = nodesRef.current;
+    if (!nodes || nodes.size === 0) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const pos of nodes.values()) {
+      if (pos.x - pad < minX) minX = pos.x - pad;
+      if (pos.x + pad > maxX) maxX = pos.x + pad;
+      if (pos.y - pad < minY) minY = pos.y - pad;
+      if (pos.y + pad > maxY) maxY = pos.y + pad;
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  // Screen-coords of the graph's center — used as the zoom anchor so zooming
+  // just scales the graph in place rather than chasing the cursor.
+  function graphAnchor() {
+    const cvs = canvasRef.current;
+    const W = cvs?.width ?? 900, H = cvs?.height ?? 560;
+    const b = nodesBBox();
+    if (!b) return { x: W / 2, y: H / 2 };
+    const v = viewRef.current;
+    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+    return { x: cx * v.scale + v.x, y: cy * v.scale + v.y };
+  }
+
+  // Zoom keeping the given screen point fixed (used by wheel — anchored on the graph center).
+  function zoomAround(screenX, screenY, factor) {
+    cancelAutoFit();
+    const v = viewRef.current;
+    const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.scale * factor));
+    const wx = (screenX - v.x) / v.scale;
+    const wy = (screenY - v.y) / v.scale;
+    viewRef.current = { scale: newScale, x: screenX - wx * newScale, y: screenY - wy * newScale };
+    setZoomPct(Math.round(newScale * 100));
+  }
+
+  // Zoom by a factor, anchored on the graph's center (so the graph grows/shrinks in place).
+  function zoomCentered(factor) {
+    const a = graphAnchor();
+    zoomAround(a.x, a.y, factor);
+  }
+
+  function fitToCanvas() {
+    cancelAutoFit();
+    const cvs = canvasRef.current;
+    if (!cvs) return;
+    const W = cvs.width || 900, H = cvs.height || 560;
+    const b = nodesBBox(START_R + 8);
+    if (!b) { resetView(); return; }
+    const bw = Math.max(1, b.maxX - b.minX), bh = Math.max(1, b.maxY - b.minY);
+    // ~8% margin; don't over-zoom a small graph (cap the fit zoom-in at 2.5×)
+    const scale = Math.max(MIN_ZOOM, Math.min(2.5, MAX_ZOOM, Math.min(W / bw, H / bh) * 0.92));
+    const cx = (b.minX + b.maxX) / 2, cy = (b.minY + b.maxY) / 2;
+    viewRef.current = { scale, x: W / 2 - cx * scale, y: H / 2 - cy * scale };
+    setZoomPct(Math.round(scale * 100));
+  }
+
+  // After a layout change (new seed / Show Cycles toggle / startup), wait for the
+  // layout to settle, then auto-fit — unless the user has zoomed/panned in the meantime.
+  // Debounced: rapid changes only fit once, for the last one.
+  function scheduleAutoFit(delay = 1400) {
+    if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+    fitTimerRef.current = setTimeout(() => {
+      fitTimerRef.current = null;
+      const v = viewRef.current;
+      if (v.scale === 1 && v.x === 0 && v.y === 0) fitToCanvas();
+    }, delay);
+  }
+
+  function handleCanvasPointerDown(event) {
+    const point = getCanvasPoint(event);
+    if (!point) return;
+    cancelAutoFit(); // touching the canvas (drag/pan) means the user is steering the view now
+    const w = screenToWorld(point);
+    const hit = findNodeAt(nodesRef.current, startNodesRef.current, w.x, w.y, Date.now());
+    if (hit) {
+      const { value, position, radius } = hit;
+      position.dragging = true;
+      position.pinned = true;
+      position.vx = 0;
+      position.vy = 0;
+      dragStateRef.current = {
+        value,
+        pointerId: event.pointerId,
+        offsetX: w.x - position.x,
+        offsetY: w.y - position.y,
+        radius,
+      };
+      setIsDraggingNode(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+    // Nothing under the cursor → pan the view.
+    const v = viewRef.current;
+    panRef.current = { pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, vx: v.x, vy: v.y };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleCanvasPointerMove(event) {
+    const drag = dragStateRef.current;
+    if (drag && drag.pointerId === event.pointerId) {
+      const point = getCanvasPoint(event);
+      const canvas = canvasRef.current;
+      const position = nodesRef.current.get(drag.value);
+      if (!point || !canvas || !position) return;
+      const w = screenToWorld(point);
+      position.x = clampNodePosition(w.x - drag.offsetX, NODE_R, canvas.width);
+      position.y = clampNodePosition(w.y - drag.offsetY, NODE_R, canvas.height);
+      position.vx = 0;
+      position.vy = 0;
+      return;
+    }
+    const pan = panRef.current;
+    if (pan && pan.pointerId === event.pointerId) {
+      viewRef.current.x = pan.vx + (event.clientX - pan.sx);
+      viewRef.current.y = pan.vy + (event.clientY - pan.sy);
+    }
+  }
+
+  function releaseDraggedNode(pointerId) {
+    const drag = dragStateRef.current;
+    if (drag && drag.pointerId === pointerId) {
+      const position = nodesRef.current.get(drag.value);
+      if (position) {
+        position.dragging = false;
+        position.pinned = true;
+        position.vx = 0;
+        position.vy = 0;
+      }
+      dragStateRef.current = null;
+      setIsDraggingNode(false);
+    }
+    if (panRef.current && panRef.current.pointerId === pointerId) {
+      panRef.current = null;
+    }
+  }
+
+  function handleCanvasPointerUp(event) {
+    releaseDraggedNode(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleCanvasPointerCancel(event) {
+    releaseDraggedNode(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function addNumberVal(val) {
+    if (isNaN(val) || val <= 0 || val > MAX_START) return;
+    // Revision 4: a new seed replaces the previous trajectory on the canvas
+    // (no more overlay — the Cases tool handles persistent comparison).
+    maybeNudgeSave();
+    clearGraph();
+    focusGridOnValue(val);
+    const { m, a, d } = paramsRef.current;
+    const { seq, outcome, cycleAt, maxValue } = computeSeq(val, m, a, d);
+
+    // Store the sequence for later filtering/extending
+    sequencesRef.current.push({ seq, outcome, cycleAt, maxValue, startVal: val, m, a, d });
+
+    // Rebuild graph with current step limit
+    rebuildGraphFromSequences();
+
+    if (outcome === 'diverge') {
+      setOverflow({ start: val, steps: seq.length - 1, maxValue });
+    }
+
+    setLog(prev =>
+      [{ start: val, outcome, steps: seq.length - 1, maxValue, m, a, d }, ...prev].slice(0, 20)
+    );
+    setVisitedNums(prev => {
+      const next = new Set(prev);
+      for (const v of seq) {
+        if (Number.isSafeInteger(v) && v >= 1 && v <= MAX_VAL) next.add(v);
+      }
+      return next;
+    });
+    // Once the force layout settles, fit the new trajectory to the canvas.
+    scheduleAutoFit();
+  }
+
+  function addNumber() {
+    const parsed = parseSingleStartInput(inputVal);
+    if (parsed.kind === 'empty') {
+      // Blank seed + Enter = a full reset (clears the canvas, the grid highlights, and the zoom/pan).
+      maybeNudgeSave();
+      reset();
+      setInputWarning('');
+      return;
+    }
+    if (parsed.kind !== 'ok') {
+      setInputWarning(getStartLimitWarning(inputVal, language) || t('startLimitInvalid'));
+      return;
+    }
+    const val = parsed.value;
+    setInputWarning('');
+    setInputVal('');
+    addNumberVal(val);
+  }
+
+  function handleInputChange(e) {
+    const nextValue = e.target.value;
+    setInputVal(nextValue);
+    setInputWarning(getStartLimitWarning(nextValue, language));
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const sign    = a >= 0 ? '+' : '−';
+  const uiTheme = useLightTheme ? THEME_PRESETS.light : THEME_PRESETS.dark;
+  const valueLimitTitle = t('valueLimitReached');
+  const valueLimitLines = valueLimitTitle.includes(' ') ? (() => {
+    const words = valueLimitTitle.split(' ');
+    return [words.slice(0, -1).join(' '), words.slice(-1).join(' ')];
+  })() : [valueLimitTitle];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: uiTheme.pageBg, color: uiTheme.textPrimary }}>
+
+      {/* ── Top bar ── */}
+      <div style={{
+        background: uiTheme.topBarBg, padding: '12px 18px',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18,
+        borderBottom: `1px solid ${uiTheme.border}`, flexShrink: 0, minHeight: 60,
+      }}>
+        <a
+          href="https://github.com/OhioMathTeacher/orbit-explorer-classroom#readme"
+          title={t('aboutAppHelp')}
+          style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 19, whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
+          {t('appName')}
+        </a>
+
+        {/* Parameter sliders — the primary controls */}
+        <div style={{ display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
+          {[
+            ['m', 'm', PARAM_COLORS.m, m, v => changeParam(setM, v), 1, 9],
+            ['a', 'b', PARAM_COLORS.a, a, v => changeParam(setA, v), -9, 9],
+            ['d', 'd', PARAM_COLORS.d, d, v => changeParam(setD, v), 2, 9],
+          ].map(([key, label, color, val, setter, min, max]) => (
+            <label key={label} style={{ fontSize: 17, display: 'flex', gap: 8, alignItems: 'center', color }}>
+              <span style={{ minWidth: 24, fontWeight: 'bold' }}>{label} =</span>
+              <input type="range" className="big-slider" min={min} max={max} value={val}
+                onChange={e => setter(parseInt(e.target.value))}
+                style={{ width: 124, color, '--slider-track': uiTheme.borderStrong }} />
+              <span style={{ minWidth: 24, fontWeight: 'bold', fontSize: 18 }}>{val}</span>
+            </label>
+          ))}
+        </div>
+
+        {/* Seed input, max steps, and case actions
+            (no "Show steps" / "Reset" buttons — Enter on a value shows it; Enter on an empty box resets;
+             the f(n) definitions live on the canvas watermark, not here) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text" inputMode="numeric" value={inputVal}
+              placeholder={t('singleStartValue')}
+              onChange={handleInputChange}
+              onKeyDown={e => e.key === 'Enter' && addNumber()}
+              style={{
+                width: 280, background: '#1a2d50', border: '1px solid #3355aa',
+                color: 'white', padding: '7px 11px', borderRadius: 5, fontSize: 15,
+              }}
+            />
+            <label
+              title={t('stepsHelp')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, color: uiTheme.textSecondary, fontSize: 13, whiteSpace: 'nowrap', cursor: 'help' }}>
+              <span>{t('maxSteps')}</span>
+              <input
+                type="text" inputMode="numeric" value={maxVisibleSteps}
+                onChange={e => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val > 0 && val <= 9999) setMaxVisibleSteps(val);
+                }}
+                style={{
+                  width: 58, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.borderStrong}`,
+                  color: uiTheme.textPrimary, padding: '6px 6px', borderRadius: 5, fontSize: 14,
+                  textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold',
+                }}
+              />
+            </label>
+            <button onClick={() => setShowDataTable(!showDataTable)} style={{
+              background: showDataTable ? '#2a4455' : '#1a2d50', border: '1px solid #3355aa',
+              color: 'white', padding: '7px 13px', borderRadius: 5, fontSize: 14,
+            }}>{`📊 ${t('cases')}`}</button>
+            <button
+              type="button"
+              disabled={!log[0] || isCaseSaved(log[0])}
+              onClick={() => log[0] && saveCase(log[0])}
+              title={t('saveCaseHelp')}
+              style={{
+                background: !log[0] ? '#253247' : isCaseSaved(log[0]) ? '#254231' : 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)',
+                border: 'none',
+                color: !log[0] ? '#7f93b0' : 'white',
+                padding: '7px 14px',
+                borderRadius: 5,
+                fontSize: 14,
+                fontWeight: 'bold',
+                cursor: !log[0] || isCaseSaved(log[0]) ? 'default' : 'pointer',
+                boxShadow: !log[0] || isCaseSaved(log[0]) ? 'none' : '0 4px 10px rgba(73, 169, 95, 0.35)',
+              }}>
+              {!log[0] ? t('saveLatestCaseDisabled') : isCaseSaved(log[0]) ? t('latestCaseSaved') : t('saveLatestCase')}
+            </button>
+
+            {/* View dropdown (Revision 5) */}
+            <div ref={viewMenuRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowViewMenu(v => !v)}
+                style={{
+                  background: showViewMenu ? '#2a4455' : '#1a2d50', border: '1px solid #3355aa',
+                  color: 'white', padding: '7px 13px', borderRadius: 5, fontSize: 14, fontWeight: 'bold',
+                  display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+                }}>
+                {t('view')} <span style={{ fontSize: 10, opacity: 0.8 }}>▾</span>
+              </button>
+              {showViewMenu && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30,
+                  minWidth: 230, background: uiTheme.panelBg, border: `1px solid ${uiTheme.borderStrong}`,
+                  borderRadius: 8, boxShadow: '0 8px 26px rgba(0,0,0,0.5)', padding: '8px 0',
+                  color: uiTheme.textPrimary, fontWeight: 'normal',
+                }}>
+                  <div style={{ padding: '2px 14px 4px', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, color: uiTheme.textMuted, textTransform: 'uppercase' }}>{t('layoutHeader')}</div>
+                  {[
+                    ['spread',  t('layoutSpread'),  t('layoutSpreadHelp')],
+                    ['polygon', t('layoutPolygon'), t('layoutPolygonHelp')],
+                    ['sorted',  t('layoutSorted'),  t('layoutSortedHelp')],
+                    ['parity',  t('layoutParity'),  t('layoutParityHelp')],
+                  ].map(([mode, label, help]) => (
+                    <label key={mode} title={help} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                      <input type="radio" name="layoutMode" checked={layoutMode === mode} onChange={() => setLayoutMode(mode)} />
+                      {label}
+                    </label>
+                  ))}
+                  <div style={{ height: 1, background: uiTheme.border, margin: '6px 10px' }} />
+                  <label title={t('colorPrimesHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={colorPrimes} onChange={e => setColorPrimes(e.target.checked)} />
+                    {t('colorPrimesLabel')}
+                  </label>
+                  <label title={t('stepNumbersHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={showStepNumbers} onChange={e => setShowStepNumbers(e.target.checked)} />
+                    {t('stepNumbersLabel')}
+                  </label>
+                  <label title={t('parityHelp')} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={parityColoring} onChange={e => setParityColoring(e.target.checked)} />
+                    {t('parityLabel')}
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+          {inputWarning && (
+            <div style={{ color: '#ffb366', fontSize: 12, lineHeight: 1.35, maxWidth: 460 }}>
+              {inputWarning}
+            </div>
+          )}
+        </div>
+
+        {/* Language — secondary, pushed to the end of the bar */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: uiTheme.textMuted, fontSize: 13, whiteSpace: 'nowrap' }}>
+          <span>{t('language')}</span>
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            style={{
+              background: uiTheme.surfaceBg,
+              border: `1px solid ${uiTheme.borderStrong}`,
+              color: uiTheme.textPrimary,
+              borderRadius: 5,
+              padding: '5px 8px',
+              fontSize: 13,
+            }}>
+            {LANGUAGES.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        {/* ── AI Setup button (far right) ── */}
+        <button
+          type="button"
+          onClick={() => setAiModalOpen(true)}
+          className={`ai-btn${aiProvider && aiProvider !== 'none' ? ' ai-active' : ''}`}
+          style={{ marginLeft: 'auto' }}
+          title="Choose AI model / enter API key"
+        >
+          <span className="ai-dot"></span>
+          🤖 {t('aiSetup')}
+        </button>
+      </div>
+
+      {/* ── AI Setup Modal ── */}
+      <div className={`ai-modal-overlay${aiModalOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setAiModalOpen(false); }}>
+        <div className="ai-modal">
+          <h2>AI Setup</h2>
+          <div className="ai-provider-cards">
+            <button
+              className={`ai-provider-card${aiProvider === 'none' ? ' selected' : ''}`}
+              onClick={() => { setStoredProvider('none'); setAiProvider('none'); }}
+            >
+              <div className="ai-card-title">No AI</div>
+              <div className="ai-card-desc">Explore without an AI thinking partner.</div>
+              <div className="ai-card-badge ai-badge-none">Off</div>
+            </button>
+            {AI_CLOUD_PROVIDERS.map(p => (
+              <button
+                key={p.id}
+                className={`ai-provider-card${aiProvider === p.id ? ' selected' : ''}`}
+                onClick={() => { setStoredProvider(p.id); setAiProvider(p.id); }}
+              >
+                <div className="ai-card-title">{p.title}</div>
+                <div className="ai-card-desc">{p.desc}</div>
+                <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
+              </button>
+            ))}
+            {/* Local-model cards: one per discovered model per endpoint */}
+            {localEndpoints.flatMap(url => (localModelsByEndpoint[url] || []).map(m => {
+              const provId = `local:${url}:${m.id}`;
+              return (
+                <button
+                  key={provId}
+                  className={`ai-provider-card${aiProvider === provId ? ' selected' : ''}`}
+                  onClick={() => { setStoredProvider(provId); setAiProvider(provId); }}
+                >
+                  <div className="ai-card-title">{m.label}</div>
+                  <div className="ai-card-desc">Runs on your machine.</div>
+                  <div className="ai-card-badge ai-badge-local">Local</div>
+                </button>
+              );
+            }))}
+            {/* Single "+ Add local server" tile in the grid */}
+            <button
+              className="ai-provider-card"
+              onClick={() => setShowAddEndpoint(true)}
+              style={{ borderStyle: 'dashed' }}
+            >
+              <div className="ai-card-title">+ Add local server</div>
+              <div className="ai-card-desc">Connect to an OpenAI-compatible LLM on your machine or network.</div>
+            </button>
+          </div>
+
+          {/* Key entry: shown when a cloud provider is selected. Field always starts
+              empty — we never display the previously-saved key (not even as masked
+              bullets). If a key is already saved, the user can either close the
+              modal (existing key keeps working) or type a new one to replace it. */}
+          {AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider) && (() => {
+            const prov = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+            const hasStored = !!getStoredKey(prov.id);
+            return (
+              <div className="ai-key-section">
+                <input
+                  type="password"
+                  placeholder={hasStored ? `Key saved · type to replace · ${prov.placeholder}` : prov.placeholder}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const v = e.target.value.trim();
+                      if (v) setStoredKey(prov.id, v);
+                      e.target.value = '';
+                      setAiModalOpen(false);
+                    } else if (e.key === 'Escape') {
+                      e.target.value = '';
+                      setAiModalOpen(false);
+                    }
+                  }}
+                  onBlur={e => {
+                    const v = e.target.value.trim();
+                    if (v) setStoredKey(prov.id, v);
+                    e.target.value = '';
+                  }}
+                />
+                <div className="ai-key-hint" dangerouslySetInnerHTML={{ __html: prov.keyHint }} />
+              </div>
+            );
+          })()}
+
+          {/* Add-local-server form — only visible when the user clicks the "+ Add local server" tile */}
+          {showAddEndpoint && (
+            <div className="ai-key-section">
+              <input
+                type="url"
+                placeholder="http://… or https://…  (URL only, NOT an API key)"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    addLocalEndpointFromInput(e.target);
+                    setShowAddEndpoint(false);
+                  } else if (e.key === 'Escape') {
+                    setShowAddEndpoint(false);
+                  }
+                }}
+              />
+              <div className="ai-key-hint">
+                Connect an OpenAI-compatible server you're running locally. Discovered models will appear as tiles above. Press <kbd>Enter</kbd> to add, <kbd>Esc</kbd> to cancel.
+              </div>
+            </div>
+          )}
+
+          <div className="ai-modal-actions">
+            <button className="am-save" onClick={() => setAiModalOpen(false)}>Done</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── INTEGER OVERFLOW overlay ── */}
+      {overflow && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 20,
+          background: 'rgba(0,0,0,0.93)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ fontSize: 'clamp(36px,7vw,88px)', fontWeight: 'bold', color: 'white', letterSpacing: 4, textAlign: 'center', lineHeight: 1.1 }}>
+            {valueLimitLines[0]}{valueLimitLines[1] ? <><br />{valueLimitLines[1]}</> : null}
+          </div>
+          <div style={{ color: '#ff8866', fontSize: 16, marginTop: 20, textAlign: 'center' }}>
+            {t('startingValueExceeded', {
+              start: formatValue(overflow.start),
+              max: formatValue(MAX_VAL),
+              steps: overflow.steps,
+            }).split(String(formatValue(overflow.start))).reduce((acc, part, idx, arr) => {
+              if (idx === arr.length - 1) return [...acc, part];
+              return [...acc, part, <strong key={idx}>{formatValue(overflow.start)}</strong>];
+            }, [])}
+          </div>
+          <div style={{ color: '#aabbd0', fontSize: 13, marginTop: 10, textAlign: 'center', maxWidth: 560 }}>
+            {t('valueLimitExplanation', { maxValue: formatValue(overflow.maxValue) }).split(String(formatValue(overflow.maxValue))).reduce((acc, part, idx, arr) => {
+              if (idx === arr.length - 1) return [...acc, part];
+              return [...acc, part, <strong key={idx}>{formatValue(overflow.maxValue)}</strong>];
+            }, [])}
+          </div>
+          <button onClick={() => setOverflow(null)} style={{
+            marginTop: 36, background: 'transparent',
+            border: '1px solid #445566', color: '#aabbcc',
+            padding: '8px 28px', borderRadius: 4, fontSize: 14, letterSpacing: 2,
+          }}>
+            {t('continue')}
+          </button>
+        </div>
+      )}
+
+      {/* ── Canvas + log panel ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+
+        {/* Main canvas */}
+        <canvas ref={canvasRef}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerUp}
+          onPointerCancel={handleCanvasPointerCancel}
+          onDoubleClick={fitToCanvas}
+          style={{ flex: 1, display: 'block', minWidth: 0, cursor: isDraggingNode ? 'grabbing' : 'grab' }} />
+
+        {/* Zoom / pan controls (Revision 6) — bottom-left of the canvas */}
+        <div style={{
+          position: 'absolute', bottom: 12, left: 12, zIndex: 6,
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: uiTheme.overlayBg, border: `1px solid ${uiTheme.borderStrong}`,
+          borderRadius: 8, padding: '5px 8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          color: uiTheme.textPrimary, userSelect: 'none',
+        }}>
+          <button type="button" onClick={() => zoomCentered(0.8)} title={t('zoomOut')} aria-label={t('zoomOut')} style={{
+            width: 30, height: 30, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 22, fontWeight: 'bold',
+            lineHeight: 1, padding: 0, cursor: 'pointer',
+          }}>−</button>
+          <span style={{ minWidth: 56, textAlign: 'center', fontSize: 15, fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }}>{zoomPct}%</span>
+          <button type="button" onClick={() => zoomCentered(1.25)} title={t('zoomIn')} aria-label={t('zoomIn')} style={{
+            width: 30, height: 30, borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 22, fontWeight: 'bold',
+            lineHeight: 1, padding: 0, cursor: 'pointer',
+          }}>+</button>
+          <button type="button" onClick={fitToCanvas} title={t('fitHelp')} style={{
+            height: 30, padding: '0 12px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
+          }}>{t('fit')}</button>
+          <button type="button" onClick={resetView} title={t('resetViewHelp')} style={{
+            height: 30, padding: '0 12px', borderRadius: 5, border: `1px solid ${uiTheme.border}`,
+            background: uiTheme.surfaceBg, color: uiTheme.textPrimary, fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
+          }}>{t('reset')}</button>
+        </div>
+
+        {/* Soft "save first?" nudge — appears briefly when a new seed replaced an unsaved trajectory (Revision 4) */}
+        {saveNudge && (
+          <div style={{
+            position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 7, display: 'flex', alignItems: 'center', gap: 12,
+            background: uiTheme.overlayBg, border: `1px solid ${uiTheme.borderStrong}`,
+            borderRadius: 9, padding: '9px 14px', boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
+            fontSize: 13, color: uiTheme.textPrimary, maxWidth: '90%',
+          }}>
+            <span>Want to save <strong>{formatValue(saveNudge.start)}</strong> first? It wasn’t added to Cases.</span>
+            <button
+              type="button"
+              onClick={() => { saveCase(saveNudge); dismissSaveNudge(); }}
+              style={{
+                background: 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)', border: 'none',
+                color: 'white', borderRadius: 5, padding: '4px 11px', fontSize: 12, fontWeight: 'bold',
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>{t('save')}</button>
+            <button
+              type="button"
+              onClick={dismissSaveNudge}
+              aria-label={t('close')}
+              title={t('close')}
+              style={{
+                background: 'transparent', border: 'none', color: uiTheme.textMuted,
+                fontSize: 17, lineHeight: 1, cursor: 'pointer', padding: '0 2px',
+              }}>×</button>
+          </div>
+        )}
+
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 5,
+          display: 'flex',
+          gap: 14,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: uiTheme.overlayBgSoft,
+            border: `1px solid ${uiTheme.border}`,
+            color: uiTheme.textPrimary,
+            borderRadius: 6,
+            padding: '6px 11px',
+            fontSize: 14,
+          }}>
+            <input
+              type="checkbox"
+              checked={showGrid}
+              onChange={e => setShowGrid(e.target.checked)}
+            />
+            {t('grid')}
+          </label>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: uiTheme.overlayBgSoft,
+            border: `1px solid ${uiTheme.border}`,
+            color: uiTheme.textPrimary,
+            borderRadius: 6,
+            padding: '6px 11px',
+            fontSize: 14,
+          }}>
+            <input
+              type="checkbox"
+              checked={useLightTheme}
+              onChange={e => setUseLightTheme(e.target.checked)}
+            />
+            {t('lightTheme')}
+          </label>
+        </div>
+
+        {/* Visible-steps control retired in Revision 2 — "max steps" now lives in the top control bar, next to the seed input. */}
+
+        {/* Data Table Overlay */}
+        {showDataTable && (
+          <div ref={dataTablePanelRef} style={{
+            position: 'fixed',
+            top: dataTableRect.top,
+            left: dataTableRect.left,
+            width: dataTableRect.width,
+            height: dataTableRect.height,
+            background: uiTheme.overlayBg,
+            border: `2px solid ${uiTheme.borderStrong}`,
+            borderRadius: 8,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            zIndex: 20,
+            resize: 'both',
+            minWidth: 540,
+            minHeight: 320,
+          }}>
+            <div
+              onPointerDown={startDataTableDrag}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 12px 10px',
+                cursor: dataTableDragRef.current ? 'grabbing' : 'grab',
+                userSelect: 'none',
+                touchAction: 'none',
+              }}>
+              <span style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 14 }}>{t('cases')}</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={downloadCasesTable}
+                  style={{
+                    background: 'linear-gradient(135deg, #2f7a44 0%, #49a95f 100%)',
+                    border: 'none',
+                    color: 'white',
+                    borderRadius: 4,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}>
+                  💾 Download Cases
+                </button>
+                <button
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={() => setShowDataTable(false)}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${uiTheme.borderStrong}`,
+                    color: uiTheme.textMuted,
+                    borderRadius: 4,
+                    padding: '2px 8px',
+                    fontSize: 11,
+                    cursor: 'pointer'
+                  }}>
+                  {t('close')}
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 12px' }}>
+              <div style={{ color: uiTheme.textMuted, fontSize: 11, lineHeight: 1.45, marginBottom: 10 }}>
+                {t('casesExplanation')}
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>{t('recentResults')}</div>
+                <table style={{ width: '100%', fontSize: 12, color: uiTheme.textPrimary, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${uiTheme.borderStrong}` }}>
+                      <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('start')}</th>
+                      <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('outcome')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('steps')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('peak')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('keep')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {log.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" style={{ padding: '8px 6px', color: uiTheme.textMuted }}>{t('noResultsYet')}</td>
+                      </tr>
+                    ) : log.map((entry, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${uiTheme.border}` }}>
+                        <td style={{ padding: '6px', fontWeight: 'bold' }}>{formatValue(entry.start)}</td>
+                        <td style={{ padding: '6px', color: OUTCOME_COLOR[entry.outcome] }}>
+                          {t(`outcomes.${entry.outcome}`)}
+                        </td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{entry.steps}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{formatValue(entry.maxValue)}</td>
+                        <td style={{ padding: '6px', textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            onClick={() => saveCase(entry)}
+                            disabled={isCaseSaved(entry)}
+                            style={{
+                              background: isCaseSaved(entry) ? '#253247' : '#234f2d',
+                              border: `1px solid ${isCaseSaved(entry) ? '#445566' : '#2f7a44'}`,
+                              color: isCaseSaved(entry) ? '#9ab0c8' : '#dff5e5',
+                              borderRadius: 4,
+                              padding: '3px 8px',
+                              fontSize: 10,
+                              cursor: isCaseSaved(entry) ? 'default' : 'pointer',
+                            }}>
+                            {isCaseSaved(entry) ? t('saved') : t('save')}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 12 }}>{t('savedCases')}</div>
+                  {savedCases.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSavedCases([])}
+                      style={{
+                        background: 'transparent',
+                        border: `1px solid ${uiTheme.border}`,
+                        color: uiTheme.textMuted,
+                        borderRadius: 4,
+                        padding: '2px 8px',
+                        fontSize: 10,
+                      }}>
+                      {t('clearSaved')}
+                    </button>
+                  )}
+                </div>
+                <table style={{ width: '100%', fontSize: 12, color: uiTheme.textPrimary, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${uiTheme.borderStrong}` }}>
+                      <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.m }}>m</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.a }}>b</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.d }}>d</th>
+                      <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('start')}</th>
+                      <th style={{ padding: '6px', textAlign: 'left', color: uiTheme.titleText }}>{t('outcome')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('steps')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('peak')}</th>
+                      <th style={{ padding: '6px', textAlign: 'right', color: uiTheme.titleText }}>{t('remove')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedCases.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" style={{ padding: '8px 6px', color: uiTheme.textMuted }}>{t('noSavedCasesYet')}</td>
+                      </tr>
+                    ) : savedCases.map(entry => (
+                      <tr key={entry.key} style={{ borderBottom: `1px solid ${uiTheme.border}` }}>
+                        <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.m }}>{entry.m}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.a }}>{entry.a}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: PARAM_COLORS.d }}>{entry.d}</td>
+                        <td style={{ padding: '6px', fontWeight: 'bold' }}>{formatValue(entry.start)}</td>
+                        <td style={{ padding: '6px', color: OUTCOME_COLOR[entry.outcome] }}>{t(`outcomes.${entry.outcome}`)}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{entry.steps}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', color: uiTheme.textSecondary }}>{formatValue(entry.maxValue)}</td>
+                        <td style={{ padding: '6px', textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            onClick={() => removeSavedCase(entry.key)}
+                            style={{
+                              background: 'transparent',
+                              border: `1px solid ${uiTheme.border}`,
+                              color: uiTheme.textMuted,
+                              borderRadius: 4,
+                              padding: '3px 8px',
+                              fontSize: 10,
+                            }}>
+                            {t('remove')}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── AI Chat Panel ── */}
+        <div style={{
+          width: 320, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
+          display: 'flex', flexDirection: 'column', flexShrink: 0, order: 2,
+        }}>
+          <div style={{
+            padding: '8px 12px', borderBottom: `1px solid ${uiTheme.border}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {(() => {
+                const local = parseLocalProvider(aiProvider);
+                if (local) return `🪢 ${local.model}`;
+                const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+                if (cloud) return `🪢 ${cloud.title}`;
+                return '🪢 AI Chat';
+              })()}
+            </div>
+            <button
+              onClick={() => {
+                if (chatMessages.length > 1 && !confirm('Clear the chat?')) return;
+                setChatMessages([{ role: 'assistant', content: t('chatGreeting') }]);
+              }}
+              style={{
+                background: 'transparent', border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
+                fontSize: 10, cursor: 'pointer',
+              }}
+              title="Clear the conversation"
+            >🧹 {t('clearChat')}</button>
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', fontSize: 12, lineHeight: 1.5 }}>
+            {chatMessages.map((msg, i) => (
+              <div key={i} style={{
+                marginBottom: 10,
+                textAlign: msg.role === 'user' ? 'right' : 'left',
+              }}>
+                <span style={{
+                  display: 'inline-block', maxWidth: '85%',
+                  background: msg.role === 'user' ? '#1e44aa' : uiTheme.surfaceBg,
+                  color: msg.role === 'user' ? '#ddeeff' : uiTheme.textSecondary,
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  padding: '6px 10px',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {msg.content}
+                </span>
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ color: uiTheme.textMuted, fontStyle: 'italic', fontSize: 11 }}>Athena is thinking…</div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: '8px', borderTop: `1px solid ${uiTheme.border}`, display: 'flex', gap: 6 }}>
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChat()}
+              placeholder={(() => {
+                const local = parseLocalProvider(aiProvider);
+                if (local) return t('askModel').replace('{model}', local.model);
+                const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+                if (cloud) return t('askModel').replace('{model}', cloud.title);
+                return t('askNoModel');
+              })()}
+              style={{
+                flex: 1, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textPrimary, borderRadius: 4, padding: '5px 8px', fontSize: 12,
+              }}
+            />
+            <button onClick={sendChat} disabled={chatLoading} style={{
+              background: chatLoading ? '#112' : '#1e44aa', border: 'none',
+              color: 'white', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
+            }}>{t('send')}</button>
+          </div>
+        </div>
+
+        {/* ── Scoreboard ── */}
+        <div style={{
+          width: 440, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
+          display: 'flex', flexDirection: 'column', flexShrink: 0, order: 1,
+          overflowX: 'hidden', overflowY: 'auto', padding: '10px 12px',
+        }}>
+          <div style={{
+            color: uiTheme.titleText, fontWeight: 'bold', fontSize: 16,
+            textAlign: 'center', letterSpacing: 2, marginBottom: 10,
+            cursor: 'help',
+          }}
+          title="Click any number in the grids to add it to your exploration. Highlighted numbers show which values you've already tested.">{t('dataReferenceGrids')}</div>
+
+          <div style={{
+            marginBottom: 12,
+            padding: '8px',
+            background: uiTheme.panelBgAlt,
+            border: `1px solid ${uiTheme.border}`,
+            borderRadius: 6,
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, marginBottom: 8, letterSpacing: 1 }}>
+              {t('gridWindow')}
+            </div>
+            {/* Revision 7: jump to the block of 100 containing a typed value (and ring that cell) */}
+            <label title={t('findHelp')} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, fontSize: 12, color: uiTheme.textSecondary, whiteSpace: 'nowrap' }}>
+              <span>{t('findLabel')}</span>
+              <input
+                type="text" inputMode="numeric" value={findVal}
+                onChange={e => setFindVal(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && jumpToBlock()}
+                placeholder="e.g. 1,234"
+                style={{
+                  flex: 1, minWidth: 0, background: uiTheme.surfaceBgMuted, border: `1px solid ${uiTheme.borderStrong}`,
+                  color: uiTheme.textPrimary, borderRadius: 4, padding: '6px 8px', fontSize: 12, fontFamily: 'monospace',
+                }}
+              />
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 76px', gap: 6, marginBottom: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: uiTheme.textSecondary, fontSize: 10 }}>{t('startAt')}</span>
+                <div style={{
+                  width: '100%',
+                  background: uiTheme.surfaceBgMuted,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  letterSpacing: 0.5,
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}>
+                  {formatValue(gridStart)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: uiTheme.textSecondary, fontSize: 10 }}>{t('blocks')}</span>
+                <div style={{
+                  width: '100%',
+                  background: uiTheme.surfaceBgMuted,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}>
+                  {gridCount}
+                </div>
+              </div>
+            </div>
+            <div style={{ color: uiTheme.textMuted, fontSize: 10, marginBottom: 6 }}>
+              {t('usePreviousNext')}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => { updateGridStart(Math.max(1, gridStart - gridCount * GRID_BLOCK_SIZE)); setHighlightCell(null); }}
+                style={{
+                  flex: 1,
+                  background: uiTheme.surfaceBg,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '5px 6px',
+                  fontSize: 10,
+                }}>
+                {t('previous')} {gridCount * GRID_BLOCK_SIZE}
+              </button>
+              <button
+                type="button"
+                onClick={() => { updateGridStart(gridStart + gridCount * GRID_BLOCK_SIZE); setHighlightCell(null); }}
+                style={{
+                  flex: 1,
+                  background: uiTheme.surfaceBg,
+                  border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textPrimary,
+                  borderRadius: 4,
+                  padding: '5px 6px',
+                  fontSize: 10,
+                }}>
+                {t('next')} {gridCount * GRID_BLOCK_SIZE}
+              </button>
+            </div>
+          </div>
+
+          <div style={{
+            marginBottom: 12,
+            padding: '8px',
+            background: uiTheme.panelBgAlt,
+            border: `1px solid ${uiTheme.border}`,
+            borderRadius: 6,
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, marginBottom: 6, letterSpacing: 1 }}>
+              {t('recentStarts')}
+            </div>
+            {log.length === 0 ? (
+              <div style={{ color: uiTheme.textMuted, fontSize: 11, lineHeight: 1.4 }}>
+                {t('largeValuesAppear')}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {log.slice(0, 8).map((entry, i) => (
+                  <button
+                    key={`${entry.start}-${entry.steps}-${i}`}
+                    type="button"
+                    onClick={() => {
+                      updateGridStart(entry.start);
+                      addNumberVal(entry.start);
+                    }}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr auto',
+                      gap: 6,
+                      alignItems: 'center',
+                      width: '100%',
+                      background: uiTheme.surfaceBg,
+                      border: `1px solid ${uiTheme.border}`,
+                      color: uiTheme.textPrimary,
+                      borderRadius: 4,
+                      padding: '5px 7px',
+                      fontSize: 11,
+                      textAlign: 'left',
+                    }}>
+                    <span>{formatValue(entry.start)}</span>
+                    <span style={{ color: OUTCOME_COLOR[entry.outcome], fontSize: 10 }}>{t(`outcomes.${entry.outcome}`)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {Array.from({ length: gridCount }, (_, block) => {
+            const blockStart = gridStart + block * GRID_BLOCK_SIZE;
+            const blockEnd = blockStart + GRID_BLOCK_SIZE - 1;
+            return (
+            <div key={blockStart} style={{ marginBottom: 14 }}>
+              <div style={{ color: '#99bbdd', fontSize: 15, fontWeight: 'bold', textAlign: 'center', marginBottom: 6, letterSpacing: 1 }}>
+                {formatValue(blockStart)} - {formatValue(blockEnd)}
+              </div>
+              {/* minmax(0,1fr) lets the 10 columns share the panel width even for big numbers,
+                  so the grid never spills off the panel; the cell font shrinks to fit the
+                  comma-formatted label (e.g. "11,111") within the resulting cell. */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, minmax(0, 1fr))', gap: 3 }}>
+                {Array.from({ length: GRID_BLOCK_SIZE }, (_, i) => blockStart + i).map(n => {
+                  const hit = visitedNums.has(n);
+                  const isFind = (n === highlightCell);
+                  const label = formatValue(n);
+                  const cellFont = Math.max(7, Math.min(14, Math.floor(58 / String(label).length)));
+                  return (
+                    <button key={n} type="button" style={{
+                      aspectRatio: '1',
+                      background: hit ? valColor(n) : '#182840',
+                      border: isFind ? '3px solid #ffd54f' : (hit ? '1px solid rgba(255,255,255,0.2)' : '1px solid #1e3566'),
+                      borderRadius: 3,
+                      position: 'relative',
+                      zIndex: isFind ? 2 : 1,
+                      boxShadow: isFind ? '0 0 9px 2px rgba(255,213,79,0.65)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: cellFont, fontWeight: 'bold',
+                      lineHeight: 1,
+                      cursor: 'pointer',
+                      padding: 0,
+                      overflow: 'hidden',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      color: 'white',
+                    }}
+                    title={t('addValueTitle', { value: label })}
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      setInputVal(String(n));
+                      addNumberVal(n);
+                    }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );})}
+
+          <div style={{
+            marginTop: 6,
+            marginBottom: 8,
+            color: '#ff3b30',
+            fontSize: 20,
+            fontWeight: 700,
+            lineHeight: 1.18,
+            fontFamily: 'Trebuchet MS, Segoe UI, sans-serif',
+          }}>
+            {t('useGridControls')}
+          </div>
+
+          <div style={{
+            marginTop: 'auto',
+            borderTop: '1px solid #1e2f55',
+            paddingTop: 8,
+            color: '#667788',
+            fontSize: 11,
+            lineHeight: 1.4,
+          }}>
+            <div>
+              {t('colorScale')}
+              <span style={{ color: '#4ecb6f', fontWeight: 'bold' }}> {t('green')}</span>
+              {' '}→ 
+              <span style={{ color: '#c4d83f', fontWeight: 'bold' }}> {t('yellow')}</span>
+              {' '}→ 
+              <span style={{ color: '#f0a23a', fontWeight: 'bold' }}> {t('orange')}</span>
+              {' '}→ 
+              <span style={{ color: '#e45a4f', fontWeight: 'bold' }}> {t('red')}</span>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              {t('greenShows')}
+            </div>
+            <div style={{ marginTop: 2 }}>
+              {t('glowingNodes')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
