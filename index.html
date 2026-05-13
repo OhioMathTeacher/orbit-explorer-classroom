@@ -274,8 +274,11 @@ async function askAI(providerId, messages, systemPrompt) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: local.model,
+        // Qwen3.5-4B reliably emits "Thinking Process:" preamble before the actual answer.
+        // The shim strips it, but the model needs enough room to *finish* thinking and
+        // emit a real response. 700 tokens often gets cut off mid-analysis.
+        max_tokens: 2000,
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        max_tokens: 700,
       }),
     });
     if (!res.ok) {
