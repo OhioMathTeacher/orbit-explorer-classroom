@@ -1374,8 +1374,16 @@ function App() {
   // ── AI provider + key state (single source of truth: localStorage via helpers above)
   const [aiProvider, setAiProvider] = useState(() => getStoredProvider());
   const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [localEndpoints, setLocalEndpoints] = useState(() => getStoredLocalEndpoints());
+  // Filter out any localStorage entries that aren't valid URLs — defends against
+  // earlier versions of the app that accepted accidental key paste.
+  const [localEndpoints, setLocalEndpoints] = useState(() => {
+    const raw = getStoredLocalEndpoints();
+    const clean = raw.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u));
+    if (clean.length !== raw.length) setStoredLocalEndpoints(clean);
+    return clean;
+  });
   const [localModelsByEndpoint, setLocalModelsByEndpoint] = useState({});  // { url: [{id, label}] }
+  const [showAddEndpoint, setShowAddEndpoint] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || '');
   const [showGhInput, setShowGhInput] = useState(false);
@@ -2520,11 +2528,20 @@ function App() {
                   onClick={() => { setStoredProvider(provId); setAiProvider(provId); }}
                 >
                   <div className="ai-card-title">{m.label}</div>
-                  <div className="ai-card-desc" style={{ wordBreak: 'break-all' }}>Local at {url}</div>
+                  <div className="ai-card-desc">Runs on your machine.</div>
                   <div className="ai-card-badge ai-badge-local">Local</div>
                 </button>
               );
             }))}
+            {/* Single "+ Add local server" tile in the grid */}
+            <button
+              className="ai-provider-card"
+              onClick={() => setShowAddEndpoint(true)}
+              style={{ borderStyle: 'dashed' }}
+            >
+              <div className="ai-card-title">+ Add local server</div>
+              <div className="ai-card-desc">Connect to an OpenAI-compatible LLM on your machine or network.</div>
+            </button>
           </div>
 
           {/* Key entry: shown when a cloud provider is selected */}
@@ -2557,48 +2574,27 @@ function App() {
             );
           })()}
 
-          {/* Local endpoints — user-added URLs to probe */}
-          <h3>Local Endpoints (optional)</h3>
-          <div className="ai-endpoint-list">
-            {localEndpoints.length === 0 && (
-              <div style={{ fontSize: '0.7rem', color: '#6a7686', marginBottom: '0.4rem' }}>
-                Add an OpenAI-compatible endpoint (e.g. <code>http://127.0.0.1:8765</code>) — discovered models will appear as cards above.
+          {/* Add-local-server form — only visible when the user clicks the "+ Add local server" tile */}
+          {showAddEndpoint && (
+            <div className="ai-key-section">
+              <input
+                type="url"
+                placeholder="http://… or https://…  (URL only, NOT an API key)"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    addLocalEndpointFromInput(e.target);
+                    setShowAddEndpoint(false);
+                  } else if (e.key === 'Escape') {
+                    setShowAddEndpoint(false);
+                  }
+                }}
+              />
+              <div className="ai-key-hint">
+                Connect an OpenAI-compatible server you're running locally. Discovered models will appear as tiles above. Press <kbd>Enter</kbd> to add, <kbd>Esc</kbd> to cancel.
               </div>
-            )}
-            {localEndpoints.map(url => {
-              const models = localModelsByEndpoint[url];
-              const status = models === undefined ? 'probing…'
-                : models.length === 0 ? 'no models found'
-                : `${models.length} model${models.length === 1 ? '' : 's'}`;
-              return (
-                <div key={url} className="ai-endpoint-list-item">
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <code>{url}</code> <span style={{ color: '#6a7686' }}>· {status}</span>
-                  </span>
-                  <button
-                    title="Remove this endpoint"
-                    onClick={() => {
-                      const next = localEndpoints.filter(u => u !== url);
-                      setStoredLocalEndpoints(next);
-                      setLocalEndpoints(next);
-                    }}
-                  >✕</button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="ai-endpoint-row">
-            <input
-              type="url"
-              placeholder="http://… or https://… (URL only, NOT an API key)"
-              onKeyDown={e => {
-                if (e.key === 'Enter') addLocalEndpointFromInput(e.target);
-              }}
-            />
-            <button
-              onClick={e => addLocalEndpointFromInput(e.target.previousElementSibling)}
-            >Add</button>
-          </div>
+            </div>
+          )}
 
           <div className="ai-modal-actions">
             <button className="am-save" onClick={() => setAiModalOpen(false)}>Done</button>
