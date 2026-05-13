@@ -442,6 +442,10 @@ const TRANSLATIONS = {
     downloadChat: 'Download Chat',
     askZheng: 'Ask Athena...',
     send: 'Send',
+    aiSetup: 'AI Setup',
+    clearChat: 'Clear',
+    askModel: 'Ask {model}…',
+    askNoModel: 'Choose a model via 🤖 AI Setup',
     dataReferenceGrids: 'DATA REFERENCE GRIDS',
     gridWindow: 'GRID WINDOW',
     startAt: 'Start at',
@@ -556,6 +560,10 @@ const TRANSLATIONS = {
     downloadChat: 'Descargar chat',
     askZheng: 'Preguntale a Athena...',
     send: 'Enviar',
+    aiSetup: 'Configuración de IA',
+    clearChat: 'Limpiar',
+    askModel: 'Pregúntale a {model}…',
+    askNoModel: 'Elige un modelo en 🤖 Configuración de IA',
     dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
     gridWindow: 'VENTANA DE CUADRICULA',
     startAt: 'Empezar en',
@@ -670,6 +678,10 @@ const TRANSLATIONS = {
     downloadChat: '下载聊天记录',
     askZheng: '向 Athena 提问……',
     send: '发送',
+    aiSetup: 'AI 设置',
+    clearChat: '清除',
+    askModel: '向 {model} 提问……',
+    askNoModel: '通过 🤖 AI 设置选择模型',
     dataReferenceGrids: '参考网格',
     gridWindow: '网格窗口',
     startAt: '起始于',
@@ -2490,7 +2502,7 @@ function App() {
           title="Choose AI model / enter API key"
         >
           <span className="ai-dot"></span>
-          🤖 AI Setup
+          🤖 {t('aiSetup')}
         </button>
       </div>
 
@@ -2980,7 +2992,7 @@ function App() {
                 fontSize: 10, cursor: 'pointer',
               }}
               title="Clear the conversation"
-            >🧹 Clear</button>
+            >🧹 {t('clearChat')}</button>
           </div>
 
           {/* Messages */}
@@ -3016,10 +3028,10 @@ function App() {
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder={(() => {
                 const local = parseLocalProvider(aiProvider);
-                if (local) return `Ask ${local.model}…`;
+                if (local) return t('askModel').replace('{model}', local.model);
                 const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
-                if (cloud) return `Ask ${cloud.title}…`;
-                return 'Ask AI… (choose a model via 🤖 AI Setup)';
+                if (cloud) return t('askModel').replace('{model}', cloud.title);
+                return t('askNoModel');
               })()}
               style={{
                 flex: 1, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
@@ -3029,7 +3041,7 @@ function App() {
             <button onClick={sendChat} disabled={chatLoading} style={{
               background: chatLoading ? '#112' : '#1e44aa', border: 'none',
               color: 'white', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
-            }}>Send</button>
+            }}>{t('send')}</button>
           </div>
         </div>
 
