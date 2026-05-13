@@ -3005,7 +3005,13 @@ function App() {
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
-              placeholder="Ask Athena…"
+              placeholder={(() => {
+                const local = parseLocalProvider(aiProvider);
+                if (local) return `Ask ${local.model}…`;
+                const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+                if (cloud) return `Ask ${cloud.title}…`;
+                return 'Ask AI… (choose a model via 🤖 AI Setup)';
+              })()}
               style={{
                 flex: 1, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
                 color: uiTheme.textPrimary, borderRadius: 4, padding: '5px 8px', fontSize: 12,
