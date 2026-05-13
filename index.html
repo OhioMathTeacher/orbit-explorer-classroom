@@ -775,7 +775,7 @@ function translate(language, key, values) {
 
 function buildSystemPrompt(language) {
   const responseLanguage = RESPONSE_LANGUAGE_NAMES[language] || RESPONSE_LANGUAGE_NAMES.en;
-  return `You are Athena, a math-curious thinking partner sitting beside a student who is exploring an interactive sequence-explorer app. The student is testing starting numbers under a rule of the form f(n) = n/d when n is even, or f(n) = m·n + b when n is odd. They watch the trajectory unfold as a graph and can change the parameters m, b, and d.
+  return `You are a math-curious thinking partner sitting beside a student who is exploring an interactive sequence-explorer app. Be honest about what underlying model powers you if asked — don't claim a persona you weren't given. The student is testing starting numbers under a rule of the form f(n) = n/d when n is even, or f(n) = m·n + b when n is odd. They watch the trajectory unfold as a graph and can change the parameters m, b, and d.
 
 You only know what they tell you. You cannot see their graph, parameters, or which starts they've tried — so when they ask vague questions, gently ask them to describe what they're noticing first.
 
@@ -2963,15 +2963,29 @@ function App() {
                 return '🪢 AI Chat';
               })()}
             </div>
-            <button
-              onClick={() => setAiModalOpen(true)}
-              style={{
-                background: 'transparent', border: `1px solid ${uiTheme.border}`,
-                color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
-                fontSize: 10, cursor: 'pointer',
-              }}
-              title="Choose AI model / enter API key"
-            >🤖 AI</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => {
+                  if (chatMessages.length > 1 && !confirm('Clear the chat?')) return;
+                  setChatMessages([{ role: 'assistant', content: t('chatGreeting') }]);
+                }}
+                style={{
+                  background: 'transparent', border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
+                  fontSize: 10, cursor: 'pointer',
+                }}
+                title="Clear the conversation"
+              >🧹 Clear</button>
+              <button
+                onClick={() => setAiModalOpen(true)}
+                style={{
+                  background: 'transparent', border: `1px solid ${uiTheme.border}`,
+                  color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
+                  fontSize: 10, cursor: 'pointer',
+                }}
+                title="Choose AI model / enter API key"
+              >🤖 AI</button>
+            </div>
           </div>
 
           {/* Messages */}
