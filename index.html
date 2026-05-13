@@ -2544,29 +2544,33 @@ function App() {
             </button>
           </div>
 
-          {/* Key entry: shown when a cloud provider is selected */}
+          {/* Key entry: shown when a cloud provider is selected. Field always starts
+              empty — we never display the previously-saved key (not even as masked
+              bullets). If a key is already saved, the user can either close the
+              modal (existing key keeps working) or type a new one to replace it. */}
           {AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider) && (() => {
             const prov = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
-            const stored = getStoredKey(prov.id);
+            const hasStored = !!getStoredKey(prov.id);
             return (
               <div className="ai-key-section">
                 <input
                   type="password"
-                  placeholder={prov.placeholder}
-                  defaultValue={stored ? '••••••••••••••••' : ''}
-                  onFocus={e => { if (e.target.value.startsWith('•')) e.target.value = ''; }}
+                  placeholder={hasStored ? `Key saved · type to replace · ${prov.placeholder}` : prov.placeholder}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
                       const v = e.target.value.trim();
-                      if (v && !v.startsWith('•')) setStoredKey(prov.id, v);
+                      if (v) setStoredKey(prov.id, v);
+                      e.target.value = '';
                       setAiModalOpen(false);
                     } else if (e.key === 'Escape') {
+                      e.target.value = '';
                       setAiModalOpen(false);
                     }
                   }}
                   onBlur={e => {
                     const v = e.target.value.trim();
-                    if (v && !v.startsWith('•')) setStoredKey(prov.id, v);
+                    if (v) setStoredKey(prov.id, v);
+                    e.target.value = '';
                   }}
                 />
                 <div className="ai-key-hint" dangerouslySetInnerHTML={{ __html: prov.keyHint }} />
