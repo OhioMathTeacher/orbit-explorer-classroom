@@ -1746,6 +1746,27 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
+  function addLocalEndpointFromInput(inputEl) {
+    const raw = inputEl.value.trim();
+    if (!raw) return;
+    // Validation: must be a URL starting with http:// or https://. Refuse
+    // anything that looks like an API key (those start with sk-, gsk_, AIza, etc.)
+    // to prevent the user from accidentally storing a secret here.
+    if (!/^https?:\/\//i.test(raw)) {
+      alert(
+        'Local endpoint must be a URL starting with http:// or https://\n\n' +
+        'If you meant to enter an API key, click a Cloud provider card above first.'
+      );
+      return;
+    }
+    const v = raw.replace(/\/$/, '');
+    if (localEndpoints.includes(v)) { inputEl.value = ''; return; }
+    const next = [...localEndpoints, v];
+    setStoredLocalEndpoints(next);
+    setLocalEndpoints(next);
+    inputEl.value = '';
+  }
+
   async function sendChat() {
     const text = chatInput.trim();
     if (!text || chatLoading) return;
@@ -2568,29 +2589,14 @@ function App() {
           </div>
           <div className="ai-endpoint-row">
             <input
-              type="text"
-              placeholder="http://127.0.0.1:8765 or any OpenAI-compatible URL"
+              type="url"
+              placeholder="http://… or https://… (URL only, NOT an API key)"
               onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const v = e.target.value.trim().replace(/\/$/, '');
-                  if (!v || localEndpoints.includes(v)) return;
-                  const next = [...localEndpoints, v];
-                  setStoredLocalEndpoints(next);
-                  setLocalEndpoints(next);
-                  e.target.value = '';
-                }
+                if (e.key === 'Enter') addLocalEndpointFromInput(e.target);
               }}
             />
             <button
-              onClick={e => {
-                const input = e.target.previousElementSibling;
-                const v = input.value.trim().replace(/\/$/, '');
-                if (!v || localEndpoints.includes(v)) return;
-                const next = [...localEndpoints, v];
-                setStoredLocalEndpoints(next);
-                setLocalEndpoints(next);
-                input.value = '';
-              }}
+              onClick={e => addLocalEndpointFromInput(e.target.previousElementSibling)}
             >Add</button>
           </div>
 
