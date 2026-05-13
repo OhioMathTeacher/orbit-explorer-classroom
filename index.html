@@ -66,6 +66,102 @@
       width: 22px; height: 22px; border: none; border-radius: 50%;
       background: currentColor; box-shadow: 0 1px 3px rgba(0,0,0,0.45);
     }
+
+    /* ═══ AI SETTINGS — modal + button (ported from close-reader) ═══ */
+    .ai-btn {
+      font-size: 0.78rem; font-weight: 500;
+      padding: 0.32rem 0.7rem;
+      border: 1px solid rgba(100,180,240,0.30); border-radius: 4px;
+      background: transparent; color: #9eb2d7; cursor: pointer;
+      display: flex; align-items: center; gap: 0.4rem;
+      transition: all 0.18s;
+    }
+    .ai-btn:hover { border-color: rgba(100,180,240,0.60); color: #cfe1ff; }
+    .ai-btn.ai-active { border-color: rgba(120,200,140,0.45); color: #8fd49a; }
+    .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+    .ai-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65); z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    .ai-modal-overlay.open { display: flex; }
+    .ai-modal {
+      background: #1a2738; border: 1px solid rgba(120,180,240,0.25);
+      border-radius: 12px; padding: 1.6rem; width: 560px; max-width: calc(100vw - 2rem);
+      max-height: calc(100vh - 2rem); overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55); color: #ddd3c0;
+    }
+    .ai-modal h2 {
+      font-weight: 400; color: #e8f0ff; font-size: 1.3rem;
+      margin: 0 0 1rem; font-family: 'Segoe UI', sans-serif;
+    }
+    .ai-modal h3 {
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #7799bb;
+      margin: 0.6rem 0 0.5rem;
+    }
+    .ai-provider-cards {
+      display: grid; grid-template-columns: repeat(2,1fr); gap: 0.55rem;
+      margin-bottom: 0.4rem;
+    }
+    .ai-provider-card {
+      background: rgba(255,255,255,0.04); border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 0.8rem 0.7rem; cursor: pointer;
+      transition: all 0.18s; position: relative; text-align: left;
+      color: inherit; font-family: inherit;
+    }
+    .ai-provider-card:hover { background: rgba(255,255,255,0.07); border-color: rgba(120,180,240,0.4); }
+    .ai-provider-card.selected { border-color: #58a6ff; background: rgba(88,166,255,0.10); }
+    .ai-card-title { font-weight: 600; font-size: 0.85rem; color: #e8f0ff; margin-bottom: 0.3rem; }
+    .ai-card-desc { font-size: 0.72rem; color: #8a96a8; line-height: 1.45; }
+    .ai-card-badge {
+      font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; display: inline-block;
+      padding: 0.15rem 0.45rem; border-radius: 3px; margin-top: 0.5rem;
+    }
+    .ai-badge-paid { background: rgba(120,80,40,0.35); color: #d4a06a; }
+    .ai-badge-free { background: rgba(40,120,60,0.30); color: #7ec88a; }
+    .ai-badge-local { background: rgba(60,80,160,0.30); color: #8aabe0; }
+    .ai-badge-none { background: rgba(90,90,90,0.30); color: #888; }
+    .ai-key-section { margin: 0.8rem 0 0.4rem; }
+    .ai-key-section input {
+      width: 100%; padding: 0.55rem 0.7rem;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(120,180,240,0.25);
+      border-radius: 5px; color: #e8f0ff; font-family: monospace;
+      font-size: 0.82rem; outline: none; margin-bottom: 0.3rem;
+    }
+    .ai-key-section input:focus { border-color: rgba(120,180,240,0.6); }
+    .ai-key-hint { font-size: 0.7rem; color: #6a7686; line-height: 1.45; }
+    .ai-key-hint a { color: #8fb8e8; text-decoration: none; }
+    .ai-key-hint a:hover { text-decoration: underline; }
+    .ai-endpoint-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; }
+    .ai-endpoint-row input { flex: 1; padding: 0.45rem 0.6rem; }
+    .ai-endpoint-row button {
+      background: rgba(120,180,240,0.15); color: #cfe1ff;
+      border: 1px solid rgba(120,180,240,0.3); border-radius: 4px;
+      padding: 0.45rem 0.7rem; font-size: 0.75rem; cursor: pointer;
+    }
+    .ai-endpoint-row button:hover { background: rgba(120,180,240,0.25); }
+    .ai-endpoint-list { font-size: 0.72rem; color: #8a96a8; margin-bottom: 0.5rem; }
+    .ai-endpoint-list-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.25rem 0; border-bottom: 1px dashed rgba(255,255,255,0.06);
+    }
+    .ai-endpoint-list-item button {
+      background: transparent; border: none; color: #c87070;
+      font-size: 0.85rem; cursor: pointer; padding: 0 0.3rem;
+    }
+    .ai-modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .ai-modal-actions button {
+      font-size: 0.82rem; font-weight: 500;
+      padding: 0.55rem 1.1rem; border-radius: 5px; border: none; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .am-save { background: #58a6ff; color: #0c1424; flex: 1; }
+    .am-save:hover { background: #79b8ff; }
+    .am-cancel { background: rgba(255,255,255,0.08); color: #9eb2d7; }
+    .am-cancel:hover { background: rgba(255,255,255,0.15); }
   </style>
 </head>
 <body>
@@ -102,43 +198,165 @@ const CHAT_KEY_STORAGE = 'zhenggpt_key';
 const CHAT_PANEL_MIN_WIDTH = 260;
 const CHAT_PANEL_MAX_WIDTH = 720;
 
-function detectChatProvider(apiKey) {
-  return apiKey.trim().startsWith('sk-or-v1-') ? 'openrouter' : 'deepseek';
+// ═══════════════════════════════════
+// AI providers — three cloud (Anthropic, Gemini, Groq), "No AI", and
+// user-configured local endpoints (each endpoint surfaces N model cards).
+// Nothing about server URLs is hardcoded; users configure via the modal.
+// ═══════════════════════════════════
+
+const AI_STORAGE = {
+  provider: 'orbit.ai.provider',
+  key: (id) => `orbit.ai.key.${id}`,
+  endpoints: 'orbit.ai.localEndpoints',
+};
+
+const AI_CLOUD_PROVIDERS = [
+  {
+    id: 'anthropic', title: 'Anthropic Claude',
+    desc: 'Your own key. Claude Sonnet — powerful and precise.',
+    badge: 'Own Key', badgeClass: 'ai-badge-paid',
+    keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…',
+    keyHint: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
+  },
+  {
+    id: 'gemini', title: 'Gemini 2.0 Flash',
+    desc: 'Free tier via Google. Use a personal Gmail account.',
+    badge: 'Free', badgeClass: 'ai-badge-free',
+    keyUrl: 'https://aistudio.google.com/apikey', placeholder: 'AIza…',
+    keyHint: 'Visit <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> for a free key — <strong style="color:#d4a843">use a personal Gmail, not a school account</strong>. Stored in your browser only.',
+  },
+  {
+    id: 'groq', title: 'Groq (Llama 3.3)',
+    desc: 'Free tier. Any email — no Google account needed.',
+    badge: 'Free', badgeClass: 'ai-badge-free',
+    keyUrl: 'https://console.groq.com/keys', placeholder: 'gsk_…',
+    keyHint: 'Visit <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> for a free key — any email works. Stored in your browser only.',
+  },
+];
+
+function getStoredProvider()        { return localStorage.getItem(AI_STORAGE.provider) || 'none'; }
+function setStoredProvider(id)      { localStorage.setItem(AI_STORAGE.provider, id); }
+function getStoredKey(provId)       { return localStorage.getItem(AI_STORAGE.key(provId)) || ''; }
+function setStoredKey(provId, key)  {
+  if (key) localStorage.setItem(AI_STORAGE.key(provId), key);
+  else     localStorage.removeItem(AI_STORAGE.key(provId));
+}
+function getStoredLocalEndpoints() {
+  try { return JSON.parse(localStorage.getItem(AI_STORAGE.endpoints) || '[]'); }
+  catch { return []; }
+}
+function setStoredLocalEndpoints(arr) {
+  localStorage.setItem(AI_STORAGE.endpoints, JSON.stringify(arr));
 }
 
-function getChatRequestConfig(apiKey, messages, language) {
-  const provider = detectChatProvider(apiKey);
-  const systemMessage = { role: 'system', content: buildSystemPrompt(language) };
+// Parse a 'local:<endpoint>:<modelId>' provider id. The endpoint may contain
+// colons (e.g., 'http://host:8765'), so the modelId is everything after the LAST colon.
+function parseLocalProvider(providerId) {
+  if (!providerId?.startsWith('local:')) return null;
+  const rest = providerId.slice('local:'.length);
+  const lastColon = rest.lastIndexOf(':');
+  if (lastColon < 0) return null;
+  return { endpoint: rest.slice(0, lastColon).replace(/\/$/, ''), model: rest.slice(lastColon + 1) };
+}
 
-  if (provider === 'openrouter') {
-    return {
-      endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': window.location.href,
-        'X-Title': 'Orbit Explorer',
-      },
-      body: {
-        model: 'deepseek/deepseek-chat',
-        messages: [systemMessage, ...messages],
-        max_tokens: 200,
-      },
-    };
+// Dispatch a chat request to the selected provider. Returns the assistant's reply text.
+// Throws Error if the provider isn't usable (no provider / no key / network failure / non-2xx).
+async function askAI(providerId, messages, systemPrompt) {
+  if (!providerId || providerId === 'none') {
+    throw new Error('No AI provider selected. Open the 🤖 AI menu to choose one.');
   }
 
-  return {
-    endpoint: 'https://api.deepseek.com/chat/completions',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: {
-      model: 'deepseek-chat',
-      messages: [systemMessage, ...messages],
-      max_tokens: 200,
-    },
-  };
+  // Local OpenAI-compatible endpoint (user-configured URL)
+  const local = parseLocalProvider(providerId);
+  if (local) {
+    const res = await fetch(`${local.endpoint}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: local.model,
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        max_tokens: 700,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Local model error ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || '';
+  }
+
+  const key = getStoredKey(providerId);
+  if (!key) throw new Error(`No API key saved for ${providerId}. Open the 🤖 AI menu to enter one.`);
+
+  if (providerId === 'anthropic') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('Invalid Anthropic key. Update it via 🤖 AI.');
+      throw new Error(`Anthropic ${res.status}: ${err?.error?.message || 'error'}`);
+    }
+    const data = await res.json();
+    return data?.content?.map(b => b.text || '').join('') || '';
+  }
+
+  if (providerId === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: messages.map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+        generationConfig: { maxOutputTokens: 600, temperature: 0.7 },
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 400 || res.status === 403) throw new Error('Invalid Gemini key. Update it via 🤖 AI.');
+      throw new Error(`Gemini ${res.status}: ${err?.error?.message || 'error'}`);
+    }
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
+
+  if (providerId === 'groq') {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        max_tokens: 600,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      if (res.status === 401) throw new Error('Invalid Groq key. Update it via 🤖 AI.');
+      throw new Error(`Groq ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || '';
+  }
+
+  throw new Error(`Unknown provider: ${providerId}`);
 }
 
 function getChatErrorMessage(error, language) {
@@ -211,15 +429,15 @@ const TRANSLATIONS = {
     clearSaved: 'Clear Saved',
     remove: 'Remove',
     noSavedCasesYet: 'No saved cases yet. Save a few interesting examples from Recent Results to compare patterns.',
-    enterApiKey: 'Enter your ToddGPT API key (OpenRouter or DeepSeek):',
+    enterApiKey: 'Enter your Athena API key (OpenRouter or DeepSeek):',
     saveKey: 'Save Key',
     getApiKeysAt: 'Get keys at',
     noKey: 'no key',
     changeKey: 'Change Key',
     keyDetected: 'Detected: {provider}',
-    zhengThinking: 'ToddGPT is thinking...',
+    zhengThinking: 'Athena is thinking...',
     downloadChat: 'Download Chat',
-    askZheng: 'Ask ToddGPT...',
+    askZheng: 'Ask Athena...',
     send: 'Send',
     dataReferenceGrids: 'DATA REFERENCE GRIDS',
     gridWindow: 'GRID WINDOW',
@@ -252,7 +470,7 @@ const TRANSLATIONS = {
     transcriptParameters: 'Parameters',
     transcriptNumbersExplored: 'Numbers Explored',
     transcriptSummary: 'EXPLORATION SUMMARY',
-    transcriptConversation: 'CONVERSATION WITH ToddGPT',
+    transcriptConversation: 'CONVERSATION WITH Athena',
     transcriptEnd: 'End of transcript',
     chatGreeting: "Hi! I'm here to help you think through what you're discovering. What patterns are you noticing in your sequences?",
     outcomes: {
@@ -325,15 +543,15 @@ const TRANSLATIONS = {
     clearSaved: 'Borrar guardados',
     remove: 'Quitar',
     noSavedCasesYet: 'Todavia no hay casos guardados. Guarda algunos ejemplos interesantes de Resultados recientes para comparar patrones.',
-    enterApiKey: 'Ingresa tu clave API de ToddGPT (OpenRouter o DeepSeek):',
+    enterApiKey: 'Ingresa tu clave API de Athena (OpenRouter o DeepSeek):',
     saveKey: 'Guardar clave',
     getApiKeysAt: 'Consigue claves en',
     noKey: 'sin clave',
     changeKey: 'Cambiar clave',
     keyDetected: 'Detectado: {provider}',
-    zhengThinking: 'ToddGPT esta pensando...',
+    zhengThinking: 'Athena esta pensando...',
     downloadChat: 'Descargar chat',
-    askZheng: 'Preguntale a ToddGPT...',
+    askZheng: 'Preguntale a Athena...',
     send: 'Enviar',
     dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
     gridWindow: 'VENTANA DE CUADRICULA',
@@ -366,7 +584,7 @@ const TRANSLATIONS = {
     transcriptParameters: 'Parametros',
     transcriptNumbersExplored: 'Valores explorados',
     transcriptSummary: 'RESUMEN DE EXPLORACION',
-    transcriptConversation: 'CONVERSACION CON ToddGPT',
+    transcriptConversation: 'CONVERSACION CON Athena',
     transcriptEnd: 'Fin de la transcripcion',
     chatGreeting: 'Hola. Estoy aqui para ayudarte a pensar sobre lo que estas descubriendo. Que patrones notas en tus secuencias?',
     outcomes: {
@@ -439,15 +657,15 @@ const TRANSLATIONS = {
     clearSaved: '清空已保存',
     remove: '删除',
     noSavedCasesYet: '还没有保存的案例。请从“最近结果”中保存几个有趣的例子来比较模式。',
-    enterApiKey: '输入你的 ToddGPT API 密钥（OpenRouter 或 DeepSeek）：',
+    enterApiKey: '输入你的 Athena API 密钥（OpenRouter 或 DeepSeek）：',
     saveKey: '保存密钥',
     getApiKeysAt: '可在此获取密钥：',
     noKey: '无密钥',
     changeKey: '更改密钥',
     keyDetected: '已识别：{provider}',
-    zhengThinking: 'ToddGPT 正在思考……',
+    zhengThinking: 'Athena 正在思考……',
     downloadChat: '下载聊天记录',
-    askZheng: '向 ToddGPT 提问……',
+    askZheng: '向 Athena 提问……',
     send: '发送',
     dataReferenceGrids: '参考网格',
     gridWindow: '网格窗口',
@@ -480,7 +698,7 @@ const TRANSLATIONS = {
     transcriptParameters: '参数',
     transcriptNumbersExplored: '已探索的起始值数量',
     transcriptSummary: '探索摘要',
-    transcriptConversation: '与 ToddGPT 的对话',
+    transcriptConversation: '与 Athena 的对话',
     transcriptEnd: '记录结束',
     chatGreeting: '你好。我会帮助你思考自己发现了什么。你在这些序列中注意到了哪些模式？',
     outcomes: {
@@ -554,39 +772,13 @@ function translate(language, key, values) {
 
 function buildSystemPrompt(language) {
   const responseLanguage = RESPONSE_LANGUAGE_NAMES[language] || RESPONSE_LANGUAGE_NAMES.en;
-  return `You are ToddGPT, a mathematical thinking partner helping students investigate a parameterized sequence rule.
+  return `You are Athena, a math-curious thinking partner sitting beside a student who is exploring an interactive sequence-explorer app. The student is testing starting numbers under a rule of the form f(n) = n/d when n is even, or f(n) = m·n + b when n is odd. They watch the trajectory unfold as a graph and can change the parameters m, b, and d.
 
-CONTEXT - What the student sees in the applet:
-- An interactive graph showing sequences as connected nodes (bubbles) with arrows
-- Each starting number they enter creates a visual path through the graph
-- The rule is: f(n) = n/d (if even) or f(n) = mn + b (if odd), where m, b, and d are parameters they can adjust
-- Outcomes are automatically detected: converges to 1, enters a cycle, or diverges
-- A results log shows which numbers they've tested and what happened
-- They can click nodes to inspect them and view saved cases
-- There is a bright orange "Download Chat" button at the bottom of this chat panel that saves the conversation as a text file
+You only know what they tell you. You cannot see their graph, parameters, or which starts they've tried — so when they ask vague questions, gently ask them to describe what they're noticing first.
 
-WHAT YOU CAN'T SEE:
-- You cannot see the visual graph or their data table
-- You don't know which specific numbers they've tried unless they tell you
-- You don't know their current m, b, and d parameter values unless they tell you
+Your way is to wonder alongside them. You ask one short question at a time, two or three sentences total. You never compute a sequence yourself; the app does that instantly. You never predict an outcome; you invite them to test it and report back. If they push you to "just tell me," you decline kindly and point them toward an experiment they could run. You never mention Collatz by name — let them find it.
 
-YOUR ROLE:
-- Help them notice patterns in the data THEY describe to you
-- Ask questions that push them to test specific hypotheses
-- Never compute sequences yourself - the applet does that instantly
-- Never tell them what will happen - ask them to test it and report back
-- Never reveal this is related to the Collatz conjecture or mention "Collatz" by name
-- If they haven't told you their parameters or data, ask them to describe what they're seeing first
-- If they ask about saving/downloading the chat, tell them to click the bright orange "Download Chat" button at the bottom of the chat panel
-
-RESPONSE STYLE:
-- Keep answers short (2-4 sentences max)
-- Ask ONE focused question at a time
-- If they ask you to "just tell them," playfully refuse and redirect to what they could try next
-- Be encouraging when they make observations
-- Always respond in ${responseLanguage}, based on the language dropdown selected in the app
-
-REMEMBER: You're a thinking partner, not an oracle. Your job is to help them think through their own observations, not to give them answers or make claims about sequences you haven't seen.`;
+Respond in ${responseLanguage}.`;
 }
 
 function formatValue(value) {
@@ -1176,13 +1368,11 @@ function App() {
   const [m, setM]           = useState(parseInt(urlM ?? '3'));
   const [a, setA]           = useState(parseInt(urlA ?? '-1'));
   const [d, setD]           = useState(parseInt(urlD ?? '2'));
-  const [apiKey, setApiKey] = useState(() => {
-    // Try URL first, then the new generic key storage, then the legacy OpenRouter storage.
-    return urlKey || localStorage.getItem(CHAT_KEY_STORAGE) || localStorage.getItem('openrouter_key') || '';
-  });
-  const [showKeyInput, setShowKeyInput] = useState(
-    !urlKey && !localStorage.getItem(CHAT_KEY_STORAGE) && !localStorage.getItem('openrouter_key')
-  );
+  // ── AI provider + key state (single source of truth: localStorage via helpers above)
+  const [aiProvider, setAiProvider] = useState(() => getStoredProvider());
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [localEndpoints, setLocalEndpoints] = useState(() => getStoredLocalEndpoints());
+  const [localModelsByEndpoint, setLocalModelsByEndpoint] = useState({});  // { url: [{id, label}] }
   const [inputVal, setInputVal] = useState('');
   const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || '');
   const [showGhInput, setShowGhInput] = useState(false);
@@ -1254,6 +1444,30 @@ function App() {
   const [chatInput,   setChatInput]   = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
+  // Probe each user-configured local endpoint for OpenAI-compatible /v1/models.
+  // Anything that responds becomes a stack of cards in the AI modal.
+  useEffect(() => {
+    if (!localEndpoints.length) { setLocalModelsByEndpoint({}); return; }
+    const ctrls = [];
+    localEndpoints.forEach(url => {
+      const clean = url.replace(/\/$/, '');
+      const ctrl = new AbortController();
+      ctrls.push(ctrl);
+      const t = setTimeout(() => ctrl.abort(), 2500);
+      fetch(`${clean}/v1/models`, { signal: ctrl.signal })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data?.data) return;
+          const models = data.data.filter(m => m?.id).map(m => ({ id: m.id, label: m.id }));
+          setLocalModelsByEndpoint(prev => ({ ...prev, [url]: models }));
+        })
+        .catch(() => {
+          setLocalModelsByEndpoint(prev => ({ ...prev, [url]: [] }));   // mark as probed but empty
+        })
+        .finally(() => clearTimeout(t));
+    });
+    return () => ctrls.forEach(c => c.abort());
+  }, [localEndpoints]);
 
   const clampDataTableRect = (rect, viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) => {
     const minWidth = 540;
@@ -1417,26 +1631,7 @@ function App() {
     }
   };
 
-  function saveApiKey(key) {
-    const trimmed = key.trim();
-    setApiKey(trimmed);
-    if (trimmed) {
-      localStorage.setItem(CHAT_KEY_STORAGE, trimmed);
-      if (detectChatProvider(trimmed) === 'openrouter') {
-        localStorage.setItem('openrouter_key', trimmed);
-      } else {
-        localStorage.removeItem('openrouter_key');
-      }
-      setShowKeyInput(false);
-    }
-  }
-
-  function clearApiKey() {
-    setApiKey('');
-    localStorage.removeItem(CHAT_KEY_STORAGE);
-    localStorage.removeItem('openrouter_key');
-    setShowKeyInput(true);
-  }
+  // (saveApiKey / clearApiKey removed — key management is in the AI Setup modal)
 
   async function saveToGitHub(filename, content) {
     try {
@@ -1479,7 +1674,7 @@ function App() {
     transcript += `${'─'.repeat(40)}\n\n`;
     
     chatMessages.forEach((msg, i) => {
-      const speaker = msg.role === 'user' ? 'STUDENT' : 'ToddGPT';
+      const speaker = msg.role === 'user' ? 'STUDENT' : 'Athena';
       transcript += `[${speaker}]\n${msg.content}\n\n`;
     });
     
@@ -1551,8 +1746,8 @@ function App() {
   async function sendChat() {
     const text = chatInput.trim();
     if (!text || chatLoading) return;
-    if (!apiKey) {
-      setShowKeyInput(true);
+    if (!aiProvider || aiProvider === 'none') {
+      setAiModalOpen(true);
       return;
     }
     const userMsg = { role: 'user', content: text };
@@ -1561,23 +1756,8 @@ function App() {
     setChatInput('');
     setChatLoading(true);
     try {
-      const request = getChatRequestConfig(apiKey, newMessages, language);
-      const res = await fetch(request.endpoint, {
-        method: 'POST',
-        headers: request.headers,
-        body: JSON.stringify(request.body),
-      });
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-      if (!res.ok) {
-        throw new Error(data?.error?.message || data?.message || `Chat request failed (${res.status})`);
-      }
-      const reply = data?.choices?.[0]?.message?.content ?? 'Something went wrong. Try again.';
-      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      const reply = await askAI(aiProvider, newMessages, buildSystemPrompt(language));
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply || '(no response)' }]);
     } catch (e) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: getChatErrorMessage(e, language) }]);
     }
@@ -2268,6 +2448,153 @@ function App() {
             ))}
           </select>
         </label>
+
+        {/* ── AI Setup button (far right) ── */}
+        <button
+          type="button"
+          onClick={() => setAiModalOpen(true)}
+          className={`ai-btn${aiProvider && aiProvider !== 'none' ? ' ai-active' : ''}`}
+          style={{ marginLeft: 'auto' }}
+          title="Choose AI model / enter API key"
+        >
+          <span className="ai-dot"></span>
+          🤖 AI Setup
+        </button>
+      </div>
+
+      {/* ── AI Setup Modal ── */}
+      <div className={`ai-modal-overlay${aiModalOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setAiModalOpen(false); }}>
+        <div className="ai-modal">
+          <h2>AI Setup</h2>
+          <div className="ai-provider-cards">
+            <button
+              className={`ai-provider-card${aiProvider === 'none' ? ' selected' : ''}`}
+              onClick={() => { setStoredProvider('none'); setAiProvider('none'); }}
+            >
+              <div className="ai-card-title">No AI</div>
+              <div className="ai-card-desc">Explore without an AI thinking partner.</div>
+              <div className="ai-card-badge ai-badge-none">Off</div>
+            </button>
+            {AI_CLOUD_PROVIDERS.map(p => (
+              <button
+                key={p.id}
+                className={`ai-provider-card${aiProvider === p.id ? ' selected' : ''}`}
+                onClick={() => { setStoredProvider(p.id); setAiProvider(p.id); }}
+              >
+                <div className="ai-card-title">{p.title}</div>
+                <div className="ai-card-desc">{p.desc}</div>
+                <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
+              </button>
+            ))}
+            {/* Local-model cards: one per discovered model per endpoint */}
+            {localEndpoints.flatMap(url => (localModelsByEndpoint[url] || []).map(m => {
+              const provId = `local:${url}:${m.id}`;
+              return (
+                <button
+                  key={provId}
+                  className={`ai-provider-card${aiProvider === provId ? ' selected' : ''}`}
+                  onClick={() => { setStoredProvider(provId); setAiProvider(provId); }}
+                >
+                  <div className="ai-card-title">{m.label}</div>
+                  <div className="ai-card-desc" style={{ wordBreak: 'break-all' }}>Local at {url}</div>
+                  <div className="ai-card-badge ai-badge-local">Local</div>
+                </button>
+              );
+            }))}
+          </div>
+
+          {/* Key entry: shown when a cloud provider is selected */}
+          {AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider) && (() => {
+            const prov = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+            const stored = getStoredKey(prov.id);
+            return (
+              <div className="ai-key-section">
+                <input
+                  type="password"
+                  placeholder={prov.placeholder}
+                  defaultValue={stored ? '••••••••••••••••' : ''}
+                  onFocus={e => { if (e.target.value.startsWith('•')) e.target.value = ''; }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const v = e.target.value.trim();
+                      if (v && !v.startsWith('•')) setStoredKey(prov.id, v);
+                      setAiModalOpen(false);
+                    } else if (e.key === 'Escape') {
+                      setAiModalOpen(false);
+                    }
+                  }}
+                  onBlur={e => {
+                    const v = e.target.value.trim();
+                    if (v && !v.startsWith('•')) setStoredKey(prov.id, v);
+                  }}
+                />
+                <div className="ai-key-hint" dangerouslySetInnerHTML={{ __html: prov.keyHint }} />
+              </div>
+            );
+          })()}
+
+          {/* Local endpoints — user-added URLs to probe */}
+          <h3>Local Endpoints (optional)</h3>
+          <div className="ai-endpoint-list">
+            {localEndpoints.length === 0 && (
+              <div style={{ fontSize: '0.7rem', color: '#6a7686', marginBottom: '0.4rem' }}>
+                Add an OpenAI-compatible endpoint (e.g. <code>http://127.0.0.1:8765</code>) — discovered models will appear as cards above.
+              </div>
+            )}
+            {localEndpoints.map(url => {
+              const models = localModelsByEndpoint[url];
+              const status = models === undefined ? 'probing…'
+                : models.length === 0 ? 'no models found'
+                : `${models.length} model${models.length === 1 ? '' : 's'}`;
+              return (
+                <div key={url} className="ai-endpoint-list-item">
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <code>{url}</code> <span style={{ color: '#6a7686' }}>· {status}</span>
+                  </span>
+                  <button
+                    title="Remove this endpoint"
+                    onClick={() => {
+                      const next = localEndpoints.filter(u => u !== url);
+                      setStoredLocalEndpoints(next);
+                      setLocalEndpoints(next);
+                    }}
+                  >✕</button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="ai-endpoint-row">
+            <input
+              type="text"
+              placeholder="http://127.0.0.1:8765 or any OpenAI-compatible URL"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const v = e.target.value.trim().replace(/\/$/, '');
+                  if (!v || localEndpoints.includes(v)) return;
+                  const next = [...localEndpoints, v];
+                  setStoredLocalEndpoints(next);
+                  setLocalEndpoints(next);
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button
+              onClick={e => {
+                const input = e.target.previousElementSibling;
+                const v = input.value.trim().replace(/\/$/, '');
+                if (!v || localEndpoints.includes(v)) return;
+                const next = [...localEndpoints, v];
+                setStoredLocalEndpoints(next);
+                setLocalEndpoints(next);
+                input.value = '';
+              }}
+            >Add</button>
+          </div>
+
+          <div className="ai-modal-actions">
+            <button className="am-save" onClick={() => setAiModalOpen(false)}>Done</button>
+          </div>
+        </div>
       </div>
 
       {/* ── INTEGER OVERFLOW overlay ── */}
@@ -2615,7 +2942,78 @@ function App() {
           </div>
         )}
 
-        {/* ToddGPT chat panel removed for the classroom build — the AI tutor (ZhengGPT) is in the frozen study version at github.com/OhioMathTeacher/orbit-explorer */}
+        {/* ── AI Chat Panel ── */}
+        <div style={{
+          width: 320, background: uiTheme.panelBg, borderLeft: `1px solid ${uiTheme.border}`,
+          display: 'flex', flexDirection: 'column', flexShrink: 0, order: 2,
+        }}>
+          <div style={{
+            padding: '8px 12px', borderBottom: `1px solid ${uiTheme.border}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8
+          }}>
+            <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {(() => {
+                const local = parseLocalProvider(aiProvider);
+                if (local) return `🪢 ${local.model}`;
+                const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+                if (cloud) return `🪢 ${cloud.title}`;
+                return '🪢 AI Chat';
+              })()}
+            </div>
+            <button
+              onClick={() => setAiModalOpen(true)}
+              style={{
+                background: 'transparent', border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
+                fontSize: 10, cursor: 'pointer',
+              }}
+              title="Choose AI model / enter API key"
+            >🤖 AI</button>
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', fontSize: 12, lineHeight: 1.5 }}>
+            {chatMessages.map((msg, i) => (
+              <div key={i} style={{
+                marginBottom: 10,
+                textAlign: msg.role === 'user' ? 'right' : 'left',
+              }}>
+                <span style={{
+                  display: 'inline-block', maxWidth: '85%',
+                  background: msg.role === 'user' ? '#1e44aa' : uiTheme.surfaceBg,
+                  color: msg.role === 'user' ? '#ddeeff' : uiTheme.textSecondary,
+                  borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                  padding: '6px 10px',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {msg.content}
+                </span>
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ color: uiTheme.textMuted, fontStyle: 'italic', fontSize: 11 }}>Athena is thinking…</div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: '8px', borderTop: `1px solid ${uiTheme.border}`, display: 'flex', gap: 6 }}>
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChat()}
+              placeholder="Ask Athena…"
+              style={{
+                flex: 1, background: uiTheme.surfaceBg, border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textPrimary, borderRadius: 4, padding: '5px 8px', fontSize: 12,
+              }}
+            />
+            <button onClick={sendChat} disabled={chatLoading} style={{
+              background: chatLoading ? '#112' : '#1e44aa', border: 'none',
+              color: 'white', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
+            }}>Send</button>
+          </div>
+        </div>
 
         {/* ── Scoreboard ── */}
         <div style={{
