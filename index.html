@@ -2969,29 +2969,18 @@ function App() {
                 return '🪢 AI Chat';
               })()}
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => {
-                  if (chatMessages.length > 1 && !confirm('Clear the chat?')) return;
-                  setChatMessages([{ role: 'assistant', content: t('chatGreeting') }]);
-                }}
-                style={{
-                  background: 'transparent', border: `1px solid ${uiTheme.border}`,
-                  color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
-                  fontSize: 10, cursor: 'pointer',
-                }}
-                title="Clear the conversation"
-              >🧹 Clear</button>
-              <button
-                onClick={() => setAiModalOpen(true)}
-                style={{
-                  background: 'transparent', border: `1px solid ${uiTheme.border}`,
-                  color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
-                  fontSize: 10, cursor: 'pointer',
-                }}
-                title="Choose AI model / enter API key"
-              >🤖 AI</button>
-            </div>
+            <button
+              onClick={() => {
+                if (chatMessages.length > 1 && !confirm('Clear the chat?')) return;
+                setChatMessages([{ role: 'assistant', content: t('chatGreeting') }]);
+              }}
+              style={{
+                background: 'transparent', border: `1px solid ${uiTheme.border}`,
+                color: uiTheme.textSecondary, borderRadius: 4, padding: '3px 8px',
+                fontSize: 10, cursor: 'pointer',
+              }}
+              title="Clear the conversation"
+            >🧹 Clear</button>
           </div>
 
           {/* Messages */}
