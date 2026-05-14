@@ -78,6 +78,7 @@
     }
     .ai-btn:hover { border-color: rgba(100,180,240,0.60); color: #cfe1ff; }
     .ai-btn.ai-active { border-color: rgba(120,200,140,0.45); color: #8fd49a; }
+    .ai-btn.ai-disconnected { border-color: rgba(200,90,90,0.45); color: #d27272; }
     .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
 
     .ai-modal-overlay {
@@ -796,13 +797,11 @@ function translate(language, key, values) {
 
 function buildSystemPrompt(language) {
   const responseLanguage = RESPONSE_LANGUAGE_NAMES[language] || RESPONSE_LANGUAGE_NAMES.en;
-  return `You are a math-curious thinking partner sitting beside a student who is exploring an interactive sequence-explorer app. Be honest about what underlying model powers you if asked — don't claim a persona you weren't given. The student is testing starting numbers under a rule of the form f(n) = n/d when n is even, or f(n) = m·n + b when n is odd. They watch the trajectory unfold as a graph and can change the parameters m, b, and d.
-
-You only know what they tell you. You cannot see their graph, parameters, or which starts they've tried — so when they ask vague questions, gently ask them to describe what they're noticing first.
-
-Your way is to wonder alongside them. You ask one short question at a time, two or three sentences total. You never compute a sequence yourself; the app does that instantly. You never predict an outcome; you invite them to test it and report back. If they push you to "just tell me," you decline kindly and point them toward an experiment they could run. You never mention Collatz by name — let them find it.
-
-Respond in ${responseLanguage}.`;
+  // Short, low-constraint prompt. A long constraint list triggers some models
+  // (notably Qwen3.5-4B) into extensive meta-reasoning that leaks into the
+  // response and burns the token budget before any answer is produced. Keep
+  // this brief and trust the model.
+  return `You help a student exploring a sequence-explorer app. Keep replies to one or two short sentences. Answer directly — no reasoning shown, no drafts, no constraint analysis. Respond in ${responseLanguage}.`;
 }
 
 function formatValue(value) {
@@ -1395,6 +1394,24 @@ function App() {
   // ── AI provider + key state (single source of truth: localStorage via helpers above)
   const [aiProvider, setAiProvider] = useState(() => getStoredProvider());
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  // Verified-connection state. localProbeOk turns true ONLY after the boot
+  // health check (or AI Setup re-selection) confirms a local endpoint
+  // actually responds. Cloud providers are considered "connected" if a key
+  // is saved (we don't pre-probe Anthropic/Gemini/Groq — that'd cost an API
+  // call; if the key is bad we discover it when the user sends a message).
+  const [localProbeOk, setLocalProbeOk] = useState(false);
+
+  // Derived: is the AI actually reachable? Drives the status dot color (green
+  // vs. red) and whether the chat panel shows a "ready" greeting vs. a
+  // "connect a model first" placeholder.
+  const aiConnected = (() => {
+    if (!aiProvider || aiProvider === 'none') return false;
+    if (parseLocalProvider(aiProvider)) return localProbeOk;
+    // Cloud provider — "connected" if a key is saved (we don't pre-probe;
+    // a bad key surfaces as an error when the user sends a message).
+    return !!getStoredKey(aiProvider);
+  })();
+
   // Filter out any localStorage entries that aren't valid URLs — defends against
   // earlier versions of the app that accepted accidental key paste.
   const [localEndpoints, setLocalEndpoints] = useState(() => {
@@ -1474,7 +1491,8 @@ function App() {
   // ── Chat state ───────────────────────────────────────────────────────────────
   const t = (key, values) => translate(language, key, values);
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: translate(language, 'chatGreeting') }
+    // Empty by default — render a conditional placeholder until the user
+    // actually sends a message AND there's a verified AI connection.
   ]);
   const [chatInput,   setChatInput]   = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -1494,12 +1512,13 @@ function App() {
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 1500);
     fetch(`${local.endpoint}/v1/models`, { signal: ctrl.signal })
-      .then(r => { if (!r.ok) throw new Error(`${r.status}`); })
+      .then(r => { if (!r.ok) throw new Error(`${r.status}`); setLocalProbeOk(true); })
       .catch(() => {
         // Probe failed — don't honor the saved local provider this session.
         // We do NOT call setStoredProvider() so the preference persists for
         // next time the shim is reachable.
         setAiProvider('none');
+        setLocalProbeOk(false);
       })
       .finally(() => clearTimeout(timeout));
     return () => { clearTimeout(timeout); ctrl.abort(); };
@@ -1684,8 +1703,10 @@ function App() {
 
   useEffect(() => {
     setChatMessages(prev => {
-      if (prev.length !== 1 || prev[0].role !== 'assistant') return prev;
-      return [{ role: 'assistant', content: translate(language, 'chatGreeting') }];
+      // No-op: greeting is now rendered conditionally outside chatMessages
+      // (see empty-state placeholder in the chat panel render), so we don't
+      // need to swap the array contents when the language changes.
+      return prev;
     });
   }, [language]);
 
@@ -2558,7 +2579,7 @@ function App() {
         <button
           type="button"
           onClick={() => setAiModalOpen(true)}
-          className={`ai-btn${aiProvider && aiProvider !== 'none' ? ' ai-active' : ''}`}
+          className={`ai-btn${aiConnected ? ' ai-active' : ' ai-disconnected'}`}
           style={{ marginLeft: 'auto' }}
           title="Choose AI model / enter API key"
         >
@@ -2598,7 +2619,7 @@ function App() {
                 <button
                   key={provId}
                   className={`ai-provider-card${aiProvider === provId ? ' selected' : ''}`}
-                  onClick={() => { setStoredProvider(provId); setAiProvider(provId); }}
+                  onClick={() => { setStoredProvider(provId); setAiProvider(provId); setLocalProbeOk(true); }}
                 >
                   <div className="ai-card-title">{m.label}</div>
                   <div className="ai-card-desc">Runs on your machine.</div>
@@ -2623,6 +2644,7 @@ function App() {
                     setLocalModelsByEndpoint(prev => ({ ...prev, [sug.url]: sug.models }));
                     setStoredProvider(provId);
                     setAiProvider(provId);
+                    setLocalProbeOk(true);
                     setSuggestedLocalServers(prev => prev.filter(s => s.url !== sug.url));
                   }}
                 >
@@ -3074,7 +3096,7 @@ function App() {
             <button
               onClick={() => {
                 if (chatMessages.length > 1 && !confirm('Clear the chat?')) return;
-                setChatMessages([{ role: 'assistant', content: t('chatGreeting') }]);
+                setChatMessages([]);
               }}
               style={{
                 background: 'transparent', border: `1px solid ${uiTheme.border}`,
@@ -3087,6 +3109,28 @@ function App() {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', fontSize: 12, lineHeight: 1.5 }}>
+            {chatMessages.length === 0 && (
+              aiConnected ? (
+                <div style={{
+                  color: uiTheme.textSecondary, fontStyle: 'italic',
+                  background: 'transparent', padding: '8px 4px',
+                  fontSize: 11, lineHeight: 1.5,
+                }}>
+                  {t('chatGreeting')}
+                </div>
+              ) : (
+                <div style={{
+                  color: uiTheme.textMuted,
+                  background: 'transparent',
+                  padding: '8px 4px',
+                  fontSize: 11, lineHeight: 1.5,
+                  fontStyle: 'italic',
+                }}>
+                  Conversations with your AI thinking partner will appear here once a model is connected.
+                  Open 🤖 AI Setup to choose one.
+                </div>
+              )
+            )}
             {chatMessages.map((msg, i) => (
               <div key={i} style={{
                 marginBottom: 10,
