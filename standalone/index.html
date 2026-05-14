@@ -259,14 +259,29 @@ function setStoredLocalEndpoints(arr) {
   localStorage.setItem(AI_STORAGE.endpoints, JSON.stringify(arr));
 }
 
-// Parse a 'local:<endpoint>:<modelId>' provider id. The endpoint may contain
-// colons (e.g., 'http://host:8765'), so the modelId is everything after the LAST colon.
+// Parse a 'local:<endpoint>:<modelId>' provider id.
+// Both the endpoint AND the modelId may contain colons:
+//   - endpoint:  http://127.0.0.1:11434  (port-colon)
+//   - modelId:   gemma3:27b              (Ollama tags use colons too)
+// So we can't split on first/last colon. Instead, anchor on the URL structure:
+//   ^(https?://host[:port])(?::(rest))?$
+// The first capture group is the endpoint; everything after the next colon
+// (which may itself contain colons) is the model id.
 function parseLocalProvider(providerId) {
   if (!providerId?.startsWith('local:')) return null;
   const rest = providerId.slice('local:'.length);
-  const lastColon = rest.lastIndexOf(':');
-  if (lastColon < 0) return null;
-  return { endpoint: rest.slice(0, lastColon).replace(/\/$/, ''), model: rest.slice(lastColon + 1) };
+  const m = rest.match(/^(https?:\/\/[^:/]+(?::\d+)?)(?::(.+))?$/);
+  if (!m || !m[2]) return null;
+  return { endpoint: m[1].replace(/\/$/, ''), model: m[2] };
+}
+
+// Heuristic: skip known embedding models when listing chat-capable models.
+// Embedding models don't serve /v1/chat/completions and just clutter the
+// AI Setup grid with non-functional tiles.
+function isEmbeddingModel(modelId) {
+  if (!modelId) return false;
+  const id = String(modelId).toLowerCase();
+  return id.includes('embed') || id.startsWith('nomic-') || id.includes('bge-') || id.startsWith('e5-');
 }
 
 // Dispatch a chat request to the selected provider. Returns the assistant's reply text.
@@ -1538,7 +1553,9 @@ function App() {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (!data?.data) return;
-          const models = data.data.filter(m => m?.id).map(m => ({ id: m.id, label: m.id }));
+          const models = data.data
+            .filter(m => m?.id && !isEmbeddingModel(m.id))
+            .map(m => ({ id: m.id, label: m.id }));
           setLocalModelsByEndpoint(prev => ({ ...prev, [url]: models }));
         })
         .catch(() => {
@@ -1562,7 +1579,9 @@ function App() {
         const res = await fetch(`${c.url}/v1/models`, { signal: AbortSignal.timeout(1500) });
         if (!res.ok) return null;
         const data = await res.json();
-        const models = (data?.data || []).filter(m => m?.id).map(m => ({ id: m.id, label: m.id }));
+        const models = (data?.data || [])
+          .filter(m => m?.id && !isEmbeddingModel(m.id))
+          .map(m => ({ id: m.id, label: m.id }));
         if (!models.length) return null;
         return { url: c.url, hint: c.hint, models };
       } catch { return null; }
