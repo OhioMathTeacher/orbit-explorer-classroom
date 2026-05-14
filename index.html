@@ -1479,6 +1479,32 @@ function App() {
   const [chatInput,   setChatInput]   = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
+
+  // Boot-time health check for saved LOCAL providers.
+  // If the user previously selected a local model (e.g. Athena V6 at
+  // 127.0.0.1:8765), don't *pretend* to be connected — actually probe the
+  // endpoint first. If it's unreachable (shim not running, port blocked,
+  // moved), fall back to 'none' for this session WITHOUT clearing the
+  // localStorage preference. The next time the shim is up, opening AI Setup
+  // will re-discover it and the user can re-select with one click.
+  useEffect(() => {
+    const stored = getStoredProvider();
+    const local = parseLocalProvider(stored);
+    if (!local) return;  // cloud provider or 'none' — nothing to verify
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 1500);
+    fetch(`${local.endpoint}/v1/models`, { signal: ctrl.signal })
+      .then(r => { if (!r.ok) throw new Error(`${r.status}`); })
+      .catch(() => {
+        // Probe failed — don't honor the saved local provider this session.
+        // We do NOT call setStoredProvider() so the preference persists for
+        // next time the shim is reachable.
+        setAiProvider('none');
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => { clearTimeout(timeout); ctrl.abort(); };
+  }, []);  // run once on mount
+
   // Probe each user-configured local endpoint for OpenAI-compatible /v1/models.
   // Anything that responds becomes a stack of cards in the AI modal.
   useEffect(() => {
