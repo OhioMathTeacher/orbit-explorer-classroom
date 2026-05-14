@@ -234,6 +234,15 @@ const AI_CLOUD_PROVIDERS = [
   },
 ];
 
+// Well-known ports for popular local LLM servers. Probed when the AI Setup
+// modal opens so users running these don't have to type a URL. The result is
+// surfaced as a one-click "Detected:" tile — the user still chooses.
+const WELL_KNOWN_LOCAL_PORTS = [
+  { url: 'http://127.0.0.1:8765',  hint: 'Athena / OpenAI-compatible shim' },
+  { url: 'http://127.0.0.1:11434', hint: 'Ollama' },
+  { url: 'http://127.0.0.1:1234',  hint: 'LM Studio' },
+];
+
 function getStoredProvider()        { return localStorage.getItem(AI_STORAGE.provider) || 'none'; }
 function setStoredProvider(id)      { localStorage.setItem(AI_STORAGE.provider, id); }
 function getStoredKey(provId)       { return localStorage.getItem(AI_STORAGE.key(provId)) || ''; }
@@ -1397,6 +1406,9 @@ function App() {
   const [localModelsByEndpoint, setLocalModelsByEndpoint] = useState({});  // { url: [{id, label}] }
   const [showAddEndpoint, setShowAddEndpoint] = useState(false);
   const [inputVal, setInputVal] = useState('');
+  // Suggestions discovered by probing well-known LLM ports when the modal opens.
+  // Shape: [{ url, hint, models: [{id, label}] }]. Cleared on modal close.
+  const [suggestedLocalServers, setSuggestedLocalServers] = useState([]);
   const [ghToken, setGhToken] = useState(() => localStorage.getItem('gh_token') || '');
   const [showGhInput, setShowGhInput] = useState(false);
   const [ghSaveStatus, setGhSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
@@ -1491,6 +1503,29 @@ function App() {
     });
     return () => ctrls.forEach(c => c.abort());
   }, [localEndpoints]);
+
+  // Probe well-known local-LLM ports whenever the AI Setup modal opens.
+  // Skips any port that's already in the user's saved endpoints. Each probe
+  // has a 1.5s timeout; only ports that respond with /v1/models become tiles.
+  useEffect(() => {
+    if (!aiModalOpen) { setSuggestedLocalServers([]); return; }
+    const saved = new Set(localEndpoints);
+    const candidates = WELL_KNOWN_LOCAL_PORTS.filter(c => !saved.has(c.url));
+    let cancelled = false;
+    Promise.all(candidates.map(async (c) => {
+      try {
+        const res = await fetch(`${c.url}/v1/models`, { signal: AbortSignal.timeout(1500) });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const models = (data?.data || []).filter(m => m?.id).map(m => ({ id: m.id, label: m.id }));
+        if (!models.length) return null;
+        return { url: c.url, hint: c.hint, models };
+      } catch { return null; }
+    })).then(results => {
+      if (!cancelled) setSuggestedLocalServers(results.filter(Boolean));
+    });
+    return () => { cancelled = true; };
+  }, [aiModalOpen, localEndpoints]);
 
   const clampDataTableRect = (rect, viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) => {
     const minWidth = 540;
@@ -2545,6 +2580,35 @@ function App() {
                 </button>
               );
             }))}
+            {/* Detected local servers: well-known ports that responded to a probe.
+                One click saves the endpoint AND selects its first model. */}
+            {suggestedLocalServers.map(sug => {
+              const firstModel = sug.models[0];
+              const provId = `local:${sug.url}:${firstModel.id}`;
+              return (
+                <button
+                  key={`sug:${sug.url}`}
+                  className="ai-provider-card"
+                  style={{ borderStyle: 'dashed' }}
+                  onClick={() => {
+                    const next = [...localEndpoints, sug.url];
+                    setStoredLocalEndpoints(next);
+                    setLocalEndpoints(next);
+                    setLocalModelsByEndpoint(prev => ({ ...prev, [sug.url]: sug.models }));
+                    setStoredProvider(provId);
+                    setAiProvider(provId);
+                    setSuggestedLocalServers(prev => prev.filter(s => s.url !== sug.url));
+                  }}
+                >
+                  <div className="ai-card-title">Detected: {sug.url.replace(/^https?:\/\//, '')}</div>
+                  <div className="ai-card-desc">
+                    {sug.hint} · {firstModel.label}{sug.models.length > 1 ? ` (+${sug.models.length - 1} more)` : ''} · click to add
+                  </div>
+                  <div className="ai-card-badge ai-badge-local">Local</div>
+                </button>
+              );
+            })}
+
             {/* Single "+ Add local server" tile in the grid */}
             <button
               className="ai-provider-card"
