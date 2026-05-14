@@ -284,6 +284,32 @@ function isEmbeddingModel(modelId) {
   return id.includes('embed') || id.startsWith('nomic-') || id.includes('bge-') || id.startsWith('e5-');
 }
 
+// Display name for a model id. Raw Ollama-style identifiers like
+// 'gemma3:27b' are technical noise; users want to see "Gemma 3 · 27B" in
+// the chat header and "Ask Gemma…" in the input prompt. This collapses
+// known families into friendly labels and falls back to a cleaned-up
+// version of the id for unknown models.
+function prettyModelLabel(id) {
+  if (!id || id === 'none') return 'AI';
+  const s = String(id);
+  if (/^athena-v6$/i.test(s)) return 'Athena V6';
+  let m;
+  if ((m = s.match(/^gemma(\d+)(?::([0-9.]+[a-z]+))?$/i)))  return m[2] ? `Gemma ${m[1]} · ${m[2].toUpperCase()}` : `Gemma ${m[1]}`;
+  if ((m = s.match(/^llama(\d+\.?\d*)(?::([0-9.]+[a-z]+))?$/i)))  return m[2] ? `Llama ${m[1]} · ${m[2].toUpperCase()}` : `Llama ${m[1]}`;
+  if ((m = s.match(/^qwen(\d+\.?\d*)[-:]?(\d+[a-z]+)$/i)))  return `Qwen ${m[1]} · ${m[2].toUpperCase()}`;
+  if ((m = s.match(/^mistral(?::([0-9.]+[a-z]+))?$/i)))  return m[1] ? `Mistral · ${m[1].toUpperCase()}` : 'Mistral';
+  if ((m = s.match(/^phi(\d+)(?::([0-9.]+[a-z]+))?$/i)))  return m[2] ? `Phi ${m[1]} · ${m[2].toUpperCase()}` : `Phi ${m[1]}`;
+  // Fallback: capitalize first letter, replace colon with bullet for readability
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/:/g, ' · ');
+}
+
+// Short / informal display name — used in places like "Ask Gemma…" or
+// "Gemma is thinking…" where the family name alone reads more naturally.
+function shortModelLabel(id) {
+  const pretty = prettyModelLabel(id);
+  return pretty.split(' · ')[0];  // drop the size suffix
+}
+
 // Dispatch a chat request to the selected provider. Returns the assistant's reply text.
 // Throws Error if the provider isn't usable (no provider / no key / network failure / non-2xx).
 async function askAI(providerId, messages, systemPrompt) {
@@ -471,6 +497,7 @@ const TRANSLATIONS = {
     clearChat: 'Clear',
     askModel: 'Ask {model}…',
     askNoModel: 'Choose a model via 🤖 AI Setup',
+    modelThinking: '{model} is thinking…',
     dataReferenceGrids: 'DATA REFERENCE GRIDS',
     gridWindow: 'GRID WINDOW',
     startAt: 'Start at',
@@ -589,6 +616,7 @@ const TRANSLATIONS = {
     clearChat: 'Limpiar',
     askModel: 'Pregúntale a {model}…',
     askNoModel: 'Elige un modelo en 🤖 Configuración de IA',
+    modelThinking: '{model} está pensando…',
     dataReferenceGrids: 'CUADRICULAS DE REFERENCIA',
     gridWindow: 'VENTANA DE CUADRICULA',
     startAt: 'Empezar en',
@@ -707,6 +735,7 @@ const TRANSLATIONS = {
     clearChat: '清除',
     askModel: '向 {model} 提问……',
     askNoModel: '通过 🤖 AI 设置选择模型',
+    modelThinking: '{model} 正在思考……',
     dataReferenceGrids: '参考网格',
     gridWindow: '网格窗口',
     startAt: '起始于',
@@ -1902,7 +1931,9 @@ function App() {
     setChatLoading(true);
     try {
       const reply = await askAI(aiProvider, newMessages, buildSystemPrompt(language));
-      setChatMessages(prev => [...prev, { role: 'assistant', content: reply || '(no response)' }]);
+      // Trim leading/trailing whitespace — some models (Gemma especially) emit
+      // leading newlines that render as blank padding under the user's message.
+      setChatMessages(prev => [...prev, { role: 'assistant', content: (reply || '(no response)').trim() }]);
     } catch (e) {
       setChatMessages(prev => [...prev, { role: 'assistant', content: getChatErrorMessage(e, language) }]);
     }
@@ -3106,7 +3137,7 @@ function App() {
             <div style={{ color: uiTheme.titleText, fontWeight: 'bold', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {(() => {
                 const local = parseLocalProvider(aiProvider);
-                if (local) return `🪢 ${local.model}`;
+                if (local) return `🪢 ${prettyModelLabel(local.model)}`;
                 const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
                 if (cloud) return `🪢 ${cloud.title}`;
                 return '🪢 AI Chat';
@@ -3168,7 +3199,15 @@ function App() {
               </div>
             ))}
             {chatLoading && (
-              <div style={{ color: uiTheme.textMuted, fontStyle: 'italic', fontSize: 11 }}>Athena is thinking…</div>
+              <div style={{ color: uiTheme.textMuted, fontStyle: 'italic', fontSize: 11 }}>
+                {(() => {
+                  const local = parseLocalProvider(aiProvider);
+                  if (local) return t('modelThinking').replace('{model}', shortModelLabel(local.model));
+                  const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+                  if (cloud) return t('modelThinking').replace('{model}', cloud.title);
+                  return t('modelThinking').replace('{model}', 'AI');
+                })()}
+              </div>
             )}
             <div ref={chatEndRef} />
           </div>
@@ -3181,7 +3220,7 @@ function App() {
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder={(() => {
                 const local = parseLocalProvider(aiProvider);
-                if (local) return t('askModel').replace('{model}', local.model);
+                if (local) return t('askModel').replace('{model}', shortModelLabel(local.model));
                 const cloud = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
                 if (cloud) return t('askModel').replace('{model}', cloud.title);
                 return t('askNoModel');
