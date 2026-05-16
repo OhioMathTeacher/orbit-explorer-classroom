@@ -102,6 +102,34 @@
       text-transform: uppercase; color: #7799bb;
       margin: 0.6rem 0 0.5rem;
     }
+    /* Local / $0 / Pay tab row above the card grid. */
+    .ai-tabs {
+      display: flex; gap: 0.2rem; margin-bottom: 0.9rem;
+      border-bottom: 1px solid rgba(120,180,240,0.15);
+    }
+    .ai-tab {
+      font-size: 0.78rem; font-weight: 500; letter-spacing: 0.03em;
+      background: transparent; border: none; color: #8a96a8;
+      padding: 0.45rem 0.95rem; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .ai-tab:hover { color: #e8f0ff; }
+    .ai-tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+    /* Hint paragraph under the Local tab listing default ports. */
+    .ai-common-urls-hint {
+      font-size: 0.7rem; color: #8a96a8; line-height: 1.55;
+      margin: 0.6rem 0 0; padding: 0.55rem 0.7rem;
+      background: rgba(120,180,240,0.05);
+      border-left: 2px solid rgba(120,180,240,0.3);
+      border-radius: 3px;
+    }
+    .ai-common-urls-hint code {
+      font-family: monospace; color: #cfe1ff;
+      background: rgba(255,255,255,0.05); padding: 0 0.18em; border-radius: 2px;
+    }
     .ai-provider-cards {
       display: grid; grid-template-columns: repeat(2,1fr); gap: 0.55rem;
       margin-bottom: 0.4rem;
@@ -163,6 +191,11 @@
     .am-save:hover { background: #79b8ff; }
     .am-cancel { background: rgba(255,255,255,0.08); color: #9eb2d7; }
     .am-cancel:hover { background: rgba(255,255,255,0.15); }
+    .am-off {
+      background: rgba(180,80,80,0.18); color: #e08585;
+      border: 1px solid rgba(180,80,80,0.45);
+    }
+    .am-off:hover { background: rgba(180,80,80,0.34); color: #ff9f9f; }
   </style>
 </head>
 <body>
@@ -521,6 +554,12 @@ const TRANSLATIONS = {
     askZheng: 'Ask Athena...',
     send: 'Send',
     aiSetup: 'AI Setup',
+    aiTabLocal: 'Local',
+    aiTabPay: 'Pay',
+    aiDone: 'Done',
+    aiTurnOff: 'Turn off AI',
+    aiCommonUrlsHeading: 'Common local server URLs',
+    aiCommonUrlsBody: "If you're not sure where your local server is running, try one of these defaults in + Add local server: Ollama (11434), LM Studio (1234), llama.cpp (8080), text-generation-webui (5000), KoboldCpp (5001), Jan (1337), GPT4All (4891). Combine the port with http://127.0.0.1: — for example, Ollama lives at http://127.0.0.1:11434.",
     clearChat: 'Clear',
     askModel: 'Ask {model}…',
     askNoModel: 'Choose a model via 🤖 AI Setup',
@@ -1465,6 +1504,15 @@ function App() {
   // ── AI provider + key state (single source of truth: localStorage via helpers above)
   const [aiProvider, setAiProvider] = useState(() => getStoredProvider());
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  // Local / $0 / Pay tab in the AI Setup modal. Opens to whichever tab
+  // contains the currently-selected provider so the user lands on their
+  // own choice rather than the default.
+  const aiTabForProvider = (id) => {
+    if (!id || id === 'none' || id.startsWith('local:')) return 'local';
+    const c = AI_CLOUD_PROVIDERS.find(p => p.id === id);
+    return c?.tier === 'paid' ? 'pay' : 'free';
+  };
+  const [aiModalTab, setAiModalTab] = useState(() => aiTabForProvider(getStoredProvider()));
   // Verified-connection state. localProbeOk turns true ONLY after the boot
   // health check (or AI Setup re-selection) confirms a local endpoint
   // actually responds. Cloud providers are considered "connected" if a key
@@ -2668,17 +2716,73 @@ function App() {
       {/* ── AI Setup Modal ── */}
       <div className={`ai-modal-overlay${aiModalOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setAiModalOpen(false); }}>
         <div className="ai-modal">
-          <h2>AI Setup</h2>
+          <h2>{t('aiSetup')}</h2>
+
+          {/* Local / $0 / Pay tab row. Each tab filters the cards below to its tier. */}
+          <div className="ai-tabs">
+            <button type="button" className={`ai-tab${aiModalTab === 'local' ? ' active' : ''}`} onClick={() => setAiModalTab('local')}>{t('aiTabLocal')}</button>
+            <button type="button" className={`ai-tab${aiModalTab === 'free'  ? ' active' : ''}`} onClick={() => setAiModalTab('free')}>$0</button>
+            <button type="button" className={`ai-tab${aiModalTab === 'pay'   ? ' active' : ''}`} onClick={() => setAiModalTab('pay')}>{t('aiTabPay')}</button>
+          </div>
+
           <div className="ai-provider-cards">
-            <button
-              className={`ai-provider-card${aiProvider === 'none' ? ' selected' : ''}`}
-              onClick={() => { setStoredProvider('none'); setAiProvider('none'); }}
-            >
-              <div className="ai-card-title">No AI</div>
-              <div className="ai-card-desc">Explore without an AI thinking partner.</div>
-              <div className="ai-card-badge ai-badge-none">Off</div>
-            </button>
-            {AI_CLOUD_PROVIDERS.map(p => (
+            {aiModalTab === 'local' && <>
+              {/* Local-model cards: one per discovered model per saved endpoint */}
+              {localEndpoints.flatMap(url => (localModelsByEndpoint[url] || []).map(m => {
+                const provId = `local:${url}:${m.id}`;
+                return (
+                  <button
+                    key={provId}
+                    className={`ai-provider-card${aiProvider === provId ? ' selected' : ''}`}
+                    onClick={() => { setStoredProvider(provId); setAiProvider(provId); setLocalProbeOk(true); }}
+                  >
+                    <div className="ai-card-title">{m.label}</div>
+                    <div className="ai-card-desc">Runs on your machine.</div>
+                    <div className="ai-card-badge ai-badge-local">Local</div>
+                  </button>
+                );
+              }))}
+              {/* Detected local servers: well-known ports that responded to a probe.
+                  One click saves the endpoint AND selects its first model. */}
+              {suggestedLocalServers.map(sug => {
+                const firstModel = sug.models[0];
+                const provId = `local:${sug.url}:${firstModel.id}`;
+                return (
+                  <button
+                    key={`sug:${sug.url}`}
+                    className="ai-provider-card"
+                    style={{ borderStyle: 'dashed' }}
+                    onClick={() => {
+                      const next = [...localEndpoints, sug.url];
+                      setStoredLocalEndpoints(next);
+                      setLocalEndpoints(next);
+                      setLocalModelsByEndpoint(prev => ({ ...prev, [sug.url]: sug.models }));
+                      setStoredProvider(provId);
+                      setAiProvider(provId);
+                      setLocalProbeOk(true);
+                      setSuggestedLocalServers(prev => prev.filter(s => s.url !== sug.url));
+                    }}
+                  >
+                    <div className="ai-card-title">Detected: {sug.url.replace(/^https?:\/\//, '')}</div>
+                    <div className="ai-card-desc">
+                      {sug.hint} · {firstModel.label}{sug.models.length > 1 ? ` (+${sug.models.length - 1} more)` : ''} · click to add
+                    </div>
+                    <div className="ai-card-badge ai-badge-local">Local</div>
+                  </button>
+                );
+              })}
+              {/* Single "+ Add local server" tile in the grid */}
+              <button
+                className="ai-provider-card"
+                onClick={() => setShowAddEndpoint(true)}
+                style={{ borderStyle: 'dashed' }}
+              >
+                <div className="ai-card-title">+ Add local server</div>
+                <div className="ai-card-desc">Connect to an OpenAI-compatible LLM on your machine or network.</div>
+              </button>
+            </>}
+
+            {aiModalTab === 'free' && AI_CLOUD_PROVIDERS.filter(p => p.tier === 'free').map(p => (
               <button
                 key={p.id}
                 className={`ai-provider-card${aiProvider === p.id ? ' selected' : ''}`}
@@ -2689,68 +2793,35 @@ function App() {
                 <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
               </button>
             ))}
-            {/* Local-model cards: one per discovered model per endpoint */}
-            {localEndpoints.flatMap(url => (localModelsByEndpoint[url] || []).map(m => {
-              const provId = `local:${url}:${m.id}`;
-              return (
-                <button
-                  key={provId}
-                  className={`ai-provider-card${aiProvider === provId ? ' selected' : ''}`}
-                  onClick={() => { setStoredProvider(provId); setAiProvider(provId); setLocalProbeOk(true); }}
-                >
-                  <div className="ai-card-title">{m.label}</div>
-                  <div className="ai-card-desc">Runs on your machine.</div>
-                  <div className="ai-card-badge ai-badge-local">Local</div>
-                </button>
-              );
-            }))}
-            {/* Detected local servers: well-known ports that responded to a probe.
-                One click saves the endpoint AND selects its first model. */}
-            {suggestedLocalServers.map(sug => {
-              const firstModel = sug.models[0];
-              const provId = `local:${sug.url}:${firstModel.id}`;
-              return (
-                <button
-                  key={`sug:${sug.url}`}
-                  className="ai-provider-card"
-                  style={{ borderStyle: 'dashed' }}
-                  onClick={() => {
-                    const next = [...localEndpoints, sug.url];
-                    setStoredLocalEndpoints(next);
-                    setLocalEndpoints(next);
-                    setLocalModelsByEndpoint(prev => ({ ...prev, [sug.url]: sug.models }));
-                    setStoredProvider(provId);
-                    setAiProvider(provId);
-                    setLocalProbeOk(true);
-                    setSuggestedLocalServers(prev => prev.filter(s => s.url !== sug.url));
-                  }}
-                >
-                  <div className="ai-card-title">Detected: {sug.url.replace(/^https?:\/\//, '')}</div>
-                  <div className="ai-card-desc">
-                    {sug.hint} · {firstModel.label}{sug.models.length > 1 ? ` (+${sug.models.length - 1} more)` : ''} · click to add
-                  </div>
-                  <div className="ai-card-badge ai-badge-local">Local</div>
-                </button>
-              );
-            })}
 
-            {/* Single "+ Add local server" tile in the grid */}
-            <button
-              className="ai-provider-card"
-              onClick={() => setShowAddEndpoint(true)}
-              style={{ borderStyle: 'dashed' }}
-            >
-              <div className="ai-card-title">+ Add local server</div>
-              <div className="ai-card-desc">Connect to an OpenAI-compatible LLM on your machine or network.</div>
-            </button>
+            {aiModalTab === 'pay' && AI_CLOUD_PROVIDERS.filter(p => p.tier === 'paid').map(p => (
+              <button
+                key={p.id}
+                className={`ai-provider-card${aiProvider === p.id ? ' selected' : ''}`}
+                onClick={() => { setStoredProvider(p.id); setAiProvider(p.id); }}
+              >
+                <div className="ai-card-title">{p.title}</div>
+                <div className="ai-card-desc">{p.desc}</div>
+                <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
+              </button>
+            ))}
           </div>
 
-          {/* Key entry: shown when a cloud provider is selected. Field always starts
-              empty — we never display the previously-saved key (not even as masked
-              bullets). If a key is already saved, the user can either close the
-              modal (existing key keeps working) or type a new one to replace it. */}
-          {AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider) && (() => {
+          {/* "Common local server URLs" hint — Local tab only. */}
+          {aiModalTab === 'local' && (
+            <div className="ai-common-urls-hint">
+              <strong>{t('aiCommonUrlsHeading')}</strong> · {t('aiCommonUrlsBody')}
+            </div>
+          )}
+
+          {/* Key entry: shown when the current selection is a cloud provider AND its
+              tier matches the active tab. Field always starts empty — we never display
+              the previously-saved key (not even as masked bullets). */}
+          {(() => {
             const prov = AI_CLOUD_PROVIDERS.find(p => p.id === aiProvider);
+            if (!prov) return null;
+            const tierTab = prov.tier === 'paid' ? 'pay' : 'free';
+            if (aiModalTab !== tierTab) return null;
             const hasStored = !!getStoredKey(prov.id);
             return (
               <div className="ai-key-section">
@@ -2780,7 +2851,7 @@ function App() {
           })()}
 
           {/* Add-local-server form — only visible when the user clicks the "+ Add local server" tile */}
-          {showAddEndpoint && (
+          {showAddEndpoint && aiModalTab === 'local' && (
             <div className="ai-key-section">
               <input
                 type="url"
@@ -2802,7 +2873,12 @@ function App() {
           )}
 
           <div className="ai-modal-actions">
-            <button className="am-save" onClick={() => setAiModalOpen(false)}>Done</button>
+            <button className="am-save" onClick={() => setAiModalOpen(false)}>{t('aiDone')}</button>
+            <button className="am-off" onClick={() => {
+              setStoredProvider('none');
+              setAiProvider('none');
+              setAiModalOpen(false);
+            }}>{t('aiTurnOff')}</button>
           </div>
         </div>
       </div>
