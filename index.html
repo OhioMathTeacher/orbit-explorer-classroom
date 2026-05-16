@@ -245,42 +245,38 @@ const AI_STORAGE = {
 };
 
 // tier: 'free' (no credit card needed) or 'paid' (billing-attached account).
-// Drives which tab ($0 vs Pay) the card lands in.
+// Drives which tab ($0 vs Pay) the card lands in. desc and keyHint reference
+// i18n keys (descKey / keyHintKey) so the modal localizes them per language.
 const AI_CLOUD_PROVIDERS = [
   {
     id: 'gemini', title: 'Gemini 2.5 Flash', tier: 'free',
-    desc: 'Free tier via Google. Use a personal Gmail account.',
     badge: 'Free', badgeClass: 'ai-badge-free',
     keyUrl: 'https://aistudio.google.com/apikey', placeholder: 'AIza…',
-    keyHint: 'Visit <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> for a free key — <strong style="color:#d4a843">use a personal Gmail, not a school account</strong>. Stored in your browser only.',
+    descKey: 'aiDescGemini', keyHintKey: 'aiKeyHintGemini',
   },
   {
     id: 'groq', title: 'Groq (Llama 3.3)', tier: 'free',
-    desc: 'Free tier. Any email — no Google account needed.',
     badge: 'Free', badgeClass: 'ai-badge-free',
     keyUrl: 'https://console.groq.com/keys', placeholder: 'gsk_…',
-    keyHint: 'Visit <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> for a free key — any email works. Stored in your browser only.',
+    descKey: 'aiDescGroq', keyHintKey: 'aiKeyHintGroq',
   },
   {
     id: 'anthropic', title: 'Anthropic Claude', tier: 'paid',
-    desc: 'Your own key. Claude Sonnet — powerful and precise.',
     badge: 'Own Key', badgeClass: 'ai-badge-paid',
     keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…',
-    keyHint: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
+    descKey: 'aiDescAnthropic', keyHintKey: 'aiKeyHintAnthropic',
   },
   {
     id: 'openai', title: 'OpenAI (GPT-4o)', tier: 'paid',
-    desc: 'Your own key. Requires a payment method on file.',
     badge: 'Own Key', badgeClass: 'ai-badge-paid',
     keyUrl: 'https://platform.openai.com/api-keys', placeholder: 'sk-…',
-    keyHint: 'Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> after adding a payment method. Stored only in your browser.',
+    descKey: 'aiDescOpenAI', keyHintKey: 'aiKeyHintOpenAI',
   },
   {
     id: 'deepseek', title: 'DeepSeek', tier: 'paid',
-    desc: 'Your own key. Very inexpensive per token.',
     badge: 'Own Key', badgeClass: 'ai-badge-paid',
     keyUrl: 'https://platform.deepseek.com/api_keys', placeholder: 'sk-…',
-    keyHint: 'Get a key at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Stored only in your browser.',
+    descKey: 'aiDescDeepSeek', keyHintKey: 'aiKeyHintDeepSeek',
   },
 ];
 
@@ -564,6 +560,16 @@ const TRANSLATIONS = {
     aiCardAddLocal: '+ Add local server',
     aiCardAddLocalDesc: 'Connect to an OpenAI-compatible LLM on your machine or network.',
     aiAddLocalPlaceholder: 'http://… or https://…  (URL only, NOT an API key)',
+    aiDescGemini: 'Free tier via Google. Use a personal Gmail account.',
+    aiDescGroq: 'Free tier. Any email — no Google account needed.',
+    aiDescAnthropic: 'Your own key. Claude Sonnet — powerful and precise.',
+    aiDescOpenAI: 'Your own key. Requires a payment method on file.',
+    aiDescDeepSeek: 'Your own key. Very inexpensive per token.',
+    aiKeyHintGemini: 'Visit <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> for a free key — <strong style="color:#d4a843">use a personal Gmail, not a school account</strong>. Stored in your browser only.',
+    aiKeyHintGroq: 'Visit <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> for a free key — any email works. Stored in your browser only.',
+    aiKeyHintAnthropic: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
+    aiKeyHintOpenAI: 'Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> after adding a payment method. Stored only in your browser.',
+    aiKeyHintDeepSeek: 'Get a key at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Stored only in your browser.',
     clearChat: 'Clear',
     askModel: 'Ask {model}…',
     askNoModel: 'Choose a model via 🤖 AI Setup',
@@ -693,6 +699,16 @@ const TRANSLATIONS = {
     aiCardAddLocal: '+ Añadir servidor local',
     aiCardAddLocalDesc: 'Conecta a un LLM compatible con OpenAI en tu máquina o red.',
     aiAddLocalPlaceholder: 'http://… o https://…  (Solo URL, NO una clave API)',
+    aiDescGemini: 'Nivel gratuito vía Google. Usa una cuenta personal de Gmail.',
+    aiDescGroq: 'Nivel gratuito. Cualquier correo — no se necesita cuenta de Google.',
+    aiDescAnthropic: 'Tu propia clave. Claude Sonnet — potente y preciso.',
+    aiDescOpenAI: 'Tu propia clave. Requiere un método de pago registrado.',
+    aiDescDeepSeek: 'Tu propia clave. Muy económico por token.',
+    aiKeyHintGemini: 'Visita <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> para una clave gratuita — <strong style="color:#d4a843">usa un Gmail personal, no una cuenta escolar</strong>. Se guarda solo en tu navegador.',
+    aiKeyHintGroq: 'Visita <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> para una clave gratuita — cualquier correo funciona. Se guarda solo en tu navegador.',
+    aiKeyHintAnthropic: 'Obtén una clave en <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Se guarda solo en tu navegador.',
+    aiKeyHintOpenAI: 'Obtén una clave en <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> después de añadir un método de pago. Se guarda solo en tu navegador.',
+    aiKeyHintDeepSeek: 'Obtén una clave en <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Se guarda solo en tu navegador.',
     clearChat: 'Limpiar',
     askModel: 'Pregúntale a {model}…',
     askNoModel: 'Elige un modelo en 🤖 Configuración de IA',
@@ -822,6 +838,16 @@ const TRANSLATIONS = {
     aiCardAddLocal: '+ 添加本地服务器',
     aiCardAddLocalDesc: '连接到在你的机器或网络上运行的 OpenAI 兼容 LLM。',
     aiAddLocalPlaceholder: 'http://… 或 https://…  （仅 URL，不是 API 密钥）',
+    aiDescGemini: '通过 Google 免费使用。请使用个人 Gmail 账户。',
+    aiDescGroq: '免费层级。任何邮箱均可 — 无需 Google 账户。',
+    aiDescAnthropic: '使用你自己的密钥。Claude Sonnet — 强大且精准。',
+    aiDescOpenAI: '使用你自己的密钥。需要账户中已绑定付款方式。',
+    aiDescDeepSeek: '使用你自己的密钥。按 token 计费非常便宜。',
+    aiKeyHintGemini: '访问 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> 获取免费密钥 — <strong style="color:#d4a843">请使用个人 Gmail，不要使用学校账户</strong>。仅存储在你的浏览器中。',
+    aiKeyHintGroq: '访问 <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> 获取免费密钥 — 任何邮箱均可。仅存储在你的浏览器中。',
+    aiKeyHintAnthropic: '在 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> 获取密钥。仅存储在你的浏览器中。',
+    aiKeyHintOpenAI: '添加付款方式后，在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> 获取密钥。仅存储在你的浏览器中。',
+    aiKeyHintDeepSeek: '在 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a> 获取密钥。仅存储在你的浏览器中。',
     clearChat: '清除',
     askModel: '向 {model} 提问……',
     askNoModel: '通过 🤖 AI 设置选择模型',
@@ -2813,7 +2839,7 @@ function App() {
                 onClick={() => { setStoredProvider(p.id); setAiProvider(p.id); }}
               >
                 <div className="ai-card-title">{p.title}</div>
-                <div className="ai-card-desc">{p.desc}</div>
+                <div className="ai-card-desc">{t(p.descKey)}</div>
                 <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
               </button>
             ))}
@@ -2825,7 +2851,7 @@ function App() {
                 onClick={() => { setStoredProvider(p.id); setAiProvider(p.id); }}
               >
                 <div className="ai-card-title">{p.title}</div>
-                <div className="ai-card-desc">{p.desc}</div>
+                <div className="ai-card-desc">{t(p.descKey)}</div>
                 <div className={`ai-card-badge ${p.badgeClass}`}>{p.badge}</div>
               </button>
             ))}
@@ -2869,7 +2895,7 @@ function App() {
                     e.target.value = '';
                   }}
                 />
-                <div className="ai-key-hint" dangerouslySetInnerHTML={{ __html: prov.keyHint }} />
+                <div className="ai-key-hint" dangerouslySetInnerHTML={{ __html: t(prov.keyHintKey) }} />
               </div>
             );
           })()}
