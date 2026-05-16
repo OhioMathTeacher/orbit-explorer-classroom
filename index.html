@@ -211,29 +211,54 @@ const AI_STORAGE = {
   endpoints: 'orbit.ai.localEndpoints',
 };
 
+// tier: 'free' (no credit card needed) or 'paid' (billing-attached account).
+// Drives which tab ($0 vs Pay) the card lands in.
 const AI_CLOUD_PROVIDERS = [
   {
-    id: 'anthropic', title: 'Anthropic Claude',
-    desc: 'Your own key. Claude Sonnet — powerful and precise.',
-    badge: 'Own Key', badgeClass: 'ai-badge-paid',
-    keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…',
-    keyHint: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
-  },
-  {
-    id: 'gemini', title: 'Gemini 2.0 Flash',
+    id: 'gemini', title: 'Gemini 2.5 Flash', tier: 'free',
     desc: 'Free tier via Google. Use a personal Gmail account.',
     badge: 'Free', badgeClass: 'ai-badge-free',
     keyUrl: 'https://aistudio.google.com/apikey', placeholder: 'AIza…',
     keyHint: 'Visit <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> for a free key — <strong style="color:#d4a843">use a personal Gmail, not a school account</strong>. Stored in your browser only.',
   },
   {
-    id: 'groq', title: 'Groq (Llama 3.3)',
+    id: 'groq', title: 'Groq (Llama 3.3)', tier: 'free',
     desc: 'Free tier. Any email — no Google account needed.',
     badge: 'Free', badgeClass: 'ai-badge-free',
     keyUrl: 'https://console.groq.com/keys', placeholder: 'gsk_…',
     keyHint: 'Visit <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> for a free key — any email works. Stored in your browser only.',
   },
+  {
+    id: 'anthropic', title: 'Anthropic Claude', tier: 'paid',
+    desc: 'Your own key. Claude Sonnet — powerful and precise.',
+    badge: 'Own Key', badgeClass: 'ai-badge-paid',
+    keyUrl: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-…',
+    keyHint: 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Stored only in your browser.',
+  },
+  {
+    id: 'openai', title: 'OpenAI (GPT-4o)', tier: 'paid',
+    desc: 'Your own key. Requires a payment method on file.',
+    badge: 'Own Key', badgeClass: 'ai-badge-paid',
+    keyUrl: 'https://platform.openai.com/api-keys', placeholder: 'sk-…',
+    keyHint: 'Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> after adding a payment method. Stored only in your browser.',
+  },
+  {
+    id: 'deepseek', title: 'DeepSeek', tier: 'paid',
+    desc: 'Your own key. Very inexpensive per token.',
+    badge: 'Own Key', badgeClass: 'ai-badge-paid',
+    keyUrl: 'https://platform.deepseek.com/api_keys', placeholder: 'sk-…',
+    keyHint: 'Get a key at <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">platform.deepseek.com</a>. Stored only in your browser.',
+  },
 ];
+
+// OpenAI-compatible cloud providers share one wire protocol: POST to a
+// /v1/chat/completions endpoint with Bearer auth. Adding a row here makes
+// askAI()'s generic branch pick it up automatically.
+const OPENAI_COMPAT_PROVIDERS = {
+  groq:     { name: 'Groq',     endpoint: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile' },
+  openai:   { name: 'OpenAI',   endpoint: 'https://api.openai.com/v1/chat/completions',      model: 'gpt-4o' },
+  deepseek: { name: 'DeepSeek', endpoint: 'https://api.deepseek.com/v1/chat/completions',    model: 'deepseek-chat' },
+};
 
 // Well-known ports for popular local LLM servers. Probed when the AI Setup
 // modal opens so users running these don't have to type a URL. The result is
@@ -369,7 +394,7 @@ async function askAI(providerId, messages, systemPrompt) {
   }
 
   if (providerId === 'gemini') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -391,20 +416,22 @@ async function askAI(providerId, messages, systemPrompt) {
     return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
 
-  if (providerId === 'groq') {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  // OpenAI-compatible providers (groq, openai, deepseek) share one wire.
+  if (OPENAI_COMPAT_PROVIDERS[providerId]) {
+    const cfg = OPENAI_COMPAT_PROVIDERS[providerId];
+    const res = await fetch(cfg.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: cfg.model,
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
         max_tokens: 600,
       }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      if (res.status === 401) throw new Error('Invalid Groq key. Update it via 🤖 AI.');
-      throw new Error(`Groq ${res.status}: ${body.slice(0, 200)}`);
+      if (res.status === 401) throw new Error(`Invalid ${cfg.name} key. Update it via 🤖 AI.`);
+      throw new Error(`${cfg.name} ${res.status}: ${body.slice(0, 200)}`);
     }
     const data = await res.json();
     return data?.choices?.[0]?.message?.content || '';
