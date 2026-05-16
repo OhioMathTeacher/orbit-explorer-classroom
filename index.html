@@ -560,6 +560,10 @@ const TRANSLATIONS = {
     aiTurnOff: 'Turn off AI',
     aiCommonUrlsHeading: 'Common local server URLs',
     aiCommonUrlsBody: "If you're not sure where your local server is running, try one of these defaults in + Add local server: Ollama (11434), LM Studio (1234), llama.cpp (8080), text-generation-webui (5000), KoboldCpp (5001), Jan (1337), GPT4All (4891). Combine the port with http://127.0.0.1: — for example, Ollama lives at http://127.0.0.1:11434.",
+    aiCardLocalDesc: 'Runs on your machine.',
+    aiCardAddLocal: '+ Add local server',
+    aiCardAddLocalDesc: 'Connect to an OpenAI-compatible LLM on your machine or network.',
+    aiAddLocalPlaceholder: 'http://… or https://…  (URL only, NOT an API key)',
     clearChat: 'Clear',
     askModel: 'Ask {model}…',
     askNoModel: 'Choose a model via 🤖 AI Setup',
@@ -679,6 +683,16 @@ const TRANSLATIONS = {
     askZheng: 'Preguntale a Athena...',
     send: 'Enviar',
     aiSetup: 'Configuración de IA',
+    aiTabLocal: 'Local',
+    aiTabPay: 'Pago',
+    aiDone: 'Listo',
+    aiTurnOff: 'Apagar IA',
+    aiCommonUrlsHeading: 'URLs comunes de servidores locales',
+    aiCommonUrlsBody: "Si no sabes dónde está ejecutándose tu servidor local, prueba uno de estos puertos predeterminados en + Añadir servidor local: Ollama (11434), LM Studio (1234), llama.cpp (8080), text-generation-webui (5000), KoboldCpp (5001), Jan (1337), GPT4All (4891). Combina el puerto con http://127.0.0.1: — por ejemplo, Ollama vive en http://127.0.0.1:11434.",
+    aiCardLocalDesc: 'Se ejecuta en tu máquina.',
+    aiCardAddLocal: '+ Añadir servidor local',
+    aiCardAddLocalDesc: 'Conecta a un LLM compatible con OpenAI en tu máquina o red.',
+    aiAddLocalPlaceholder: 'http://… o https://…  (Solo URL, NO una clave API)',
     clearChat: 'Limpiar',
     askModel: 'Pregúntale a {model}…',
     askNoModel: 'Elige un modelo en 🤖 Configuración de IA',
@@ -798,6 +812,16 @@ const TRANSLATIONS = {
     askZheng: '向 Athena 提问……',
     send: '发送',
     aiSetup: 'AI 设置',
+    aiTabLocal: '本地',
+    aiTabPay: '付费',
+    aiDone: '完成',
+    aiTurnOff: '关闭 AI',
+    aiCommonUrlsHeading: '常用本地服务器地址',
+    aiCommonUrlsBody: "如果你不确定本地服务器在哪里运行，请在 + 添加本地服务器 中尝试以下默认端口：Ollama (11434)、LM Studio (1234)、llama.cpp (8080)、text-generation-webui (5000)、KoboldCpp (5001)、Jan (1337)、GPT4All (4891)。将端口与 http://127.0.0.1: 组合 — 例如，Ollama 位于 http://127.0.0.1:11434。",
+    aiCardLocalDesc: '在你的机器上运行。',
+    aiCardAddLocal: '+ 添加本地服务器',
+    aiCardAddLocalDesc: '连接到在你的机器或网络上运行的 OpenAI 兼容 LLM。',
+    aiAddLocalPlaceholder: 'http://… 或 https://…  （仅 URL，不是 API 密钥）',
     clearChat: '清除',
     askModel: '向 {model} 提问……',
     askNoModel: '通过 🤖 AI 设置选择模型',
@@ -2737,7 +2761,7 @@ function App() {
                     onClick={() => { setStoredProvider(provId); setAiProvider(provId); setLocalProbeOk(true); }}
                   >
                     <div className="ai-card-title">{m.label}</div>
-                    <div className="ai-card-desc">Runs on your machine.</div>
+                    <div className="ai-card-desc">{t('aiCardLocalDesc')}</div>
                     <div className="ai-card-badge ai-badge-local">Local</div>
                   </button>
                 );
@@ -2777,8 +2801,8 @@ function App() {
                 onClick={() => setShowAddEndpoint(true)}
                 style={{ borderStyle: 'dashed' }}
               >
-                <div className="ai-card-title">+ Add local server</div>
-                <div className="ai-card-desc">Connect to an OpenAI-compatible LLM on your machine or network.</div>
+                <div className="ai-card-title">{t('aiCardAddLocal')}</div>
+                <div className="ai-card-desc">{t('aiCardAddLocalDesc')}</div>
               </button>
             </>}
 
@@ -2855,7 +2879,7 @@ function App() {
             <div className="ai-key-section">
               <input
                 type="url"
-                placeholder="http://… or https://…  (URL only, NOT an API key)"
+                placeholder={t('aiAddLocalPlaceholder')}
                 autoFocus
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
